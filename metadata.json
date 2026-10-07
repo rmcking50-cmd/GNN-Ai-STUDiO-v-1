@@ -1,0 +1,10 @@
+{
+  "name": "GNN Ai STUDiO",
+  "description": "An AI-powered dashboard for professional video generation, news script editing, social media scheduling automatic caption editing with performance analytics.",
+  "requestFramePermissions": [
+    "microphone"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

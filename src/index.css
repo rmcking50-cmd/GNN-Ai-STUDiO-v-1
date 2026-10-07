@@ -1,0 +1,60 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Space Grotesk", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  --animate-resize-icon-pulse: resize-icon-pulse 1.2s ease-in-out infinite;
+}
+
+body {
+  background-color: #020617;
+  color: #f1f5f9;
+  font-family: var(--font-sans);
+}
+
+/* Subtle Conflict Shimmer animation for GitHub status indicator */
+@keyframes conflict-shimmer {
+  0% {
+    transform: translateX(-150%) skewX(-20deg);
+  }
+  50%, 100% {
+    transform: translateX(250%) skewX(-20deg);
+  }
+}
+
+.conflict-shimmer-sheen {
+  animation: conflict-shimmer 2.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes conflict-pulse-glow {
+  0%, 100% {
+    box-shadow: 0 0 10px rgba(239, 68, 68, 0.35);
+  }
+  50% {
+    box-shadow: 0 0 18px rgba(239, 68, 68, 0.65), 0 0 4px rgba(254, 202, 202, 0.4);
+  }
+}
+
+.conflict-glow-animation {
+  animation: conflict-pulse-glow 2s ease-in-out infinite;
+}
+
+/* Subtle resize-icon-pulse animation for #workspace-card-resize-handle */
+@keyframes resize-icon-pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.75;
+  }
+  50% {
+    transform: scale(1.18);
+    opacity: 1;
+    filter: drop-shadow(0 0 5px rgba(239, 68, 68, 0.7));
+  }
+}
+
+#workspace-card-resize-handle:not(.cursor-not-allowed):hover svg {
+  animation: resize-icon-pulse 1.2s ease-in-out infinite;
+}
+
