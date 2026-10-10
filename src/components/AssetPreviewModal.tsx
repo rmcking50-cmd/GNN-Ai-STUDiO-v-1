@@ -24,7 +24,8 @@ import {
   Check,
   CheckCircle2,
   Loader2,
-  AlertTriangle
+  AlertTriangle,
+  Folder
 } from 'lucide-react';
 import { RepositoryAsset } from '../types';
 
@@ -217,6 +218,13 @@ export default function AssetPreviewModal({
                 {asset.category && (
                   <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">
                     {asset.category}
+                  </span>
+                )}
+
+                {asset.folder && (
+                  <span className="px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-purple-500/15 text-purple-300 border border-purple-500/30 flex items-center gap-1">
+                    <Folder className="w-3 h-3 text-purple-400" />
+                    {asset.folder}
                   </span>
                 )}
 

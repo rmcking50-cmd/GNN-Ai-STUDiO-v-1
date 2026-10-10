@@ -313,6 +313,7 @@ function MainAppContent() {
       resolution: '1080p',
       createdAt: '2026-06-19',
       status: 'Ready',
+      folder: 'Studio Intros',
     },
     {
       id: 'asset-video-init-portrait',
@@ -324,6 +325,7 @@ function MainAppContent() {
       resolution: '720p',
       createdAt: '2026-06-19',
       status: 'Processing',
+      folder: 'Field & Mobile',
     },
     {
       id: 'asset-img-init',
@@ -334,6 +336,7 @@ function MainAppContent() {
       resolution: '2560x1440',
       createdAt: '2026-06-19',
       status: 'Ready',
+      folder: 'Studio Backdrops',
     },
     {
       id: 'asset-audio-init',
@@ -344,7 +347,8 @@ function MainAppContent() {
       size: '142 KB',
       createdAt: '2026-06-19',
       status: 'Ready',
-      category: 'Studio Promo'
+      category: 'Studio Promo',
+      folder: 'Audio Jingles',
     },
     {
       id: 'asset-sub-init',
@@ -356,6 +360,7 @@ function MainAppContent() {
       lyrics_or_text: "1\n00:00:01,000 --> 00:00:05,000\nজিএনএন বাংলা স্টুডিও থেকে সরাসরি সম্প্রচারিত তথ্য।\n\n2\n00:00:05,100 --> 00:00:10,000\nআজকের প্রধান খবরগুলো নিয়ে আমি আপনাদের সাথে আছি কাহিনুর রহমান।",
       language: 'Bangla',
       status: 'Error',
+      folder: 'Captions',
     }
   ]);
 

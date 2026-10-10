@@ -14,6 +14,7 @@ export interface RepositoryAsset {
   language?: string;
   status?: 'Ready' | 'Processing' | 'Error';
   category?: string;
+  folder?: string;
 }
 
 export interface NewsArticle {

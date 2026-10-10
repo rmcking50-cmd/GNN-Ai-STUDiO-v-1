@@ -26,7 +26,14 @@ import {
   Loader2,
   AlertTriangle,
   CheckCircle2,
-  Maximize2
+  Maximize2,
+  Folder,
+  FolderPlus,
+  FolderOpen,
+  FolderCheck,
+  FolderMinus,
+  GripVertical,
+  Edit2
 } from 'lucide-react';
 import { RepositoryAsset, UserRolePayload } from '../types';
 import BulkDeleteConfirmationDialog from './BulkDeleteConfirmationDialog';
@@ -92,6 +99,228 @@ export default function AssetRepository({ userRole, assets, setAssets, viewMode 
   // Filter terms
   const [filterType, setFilterType] = useState<string>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'Ready' | 'Processing' | 'Error'>('all');
+
+  // --- CUSTOM FOLDERS & HTML5 DRAG-AND-DROP ---
+  const [customFolders, setCustomFolders] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('gnn_custom_folders');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch {}
+    return [
+      'Studio Intros',
+      'Field & Mobile',
+      'Studio Backdrops',
+      'Audio Jingles',
+      'Captions',
+      'B-Roll & Graphics',
+      'Breaking News'
+    ];
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('gnn_custom_folders', JSON.stringify(customFolders));
+    } catch {}
+  }, [customFolders]);
+
+  const allAvailableFolders = useMemo(() => {
+    const set = new Set<string>(customFolders);
+    assets.forEach(a => {
+      if (a.folder && a.folder.trim()) {
+        set.add(a.folder.trim());
+      }
+    });
+    return Array.from(set);
+  }, [customFolders, assets]);
+
+  // Folder filter: null = all assets, '__unorganized__' = assets without folder, or a string folder name
+  const [activeFolder, setActiveFolder] = useState<string | null>(null);
+
+  // Folder creation & editing
+  const [isCreatingFolder, setIsCreatingFolder] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [editingFolderOriginal, setEditingFolderOriginal] = useState<string | null>(null);
+  const [editingFolderInput, setEditingFolderInput] = useState('');
+  const [bulkMoveFolder, setBulkMoveFolder] = useState<string>('');
+
+  // HTML5 Drag-and-Drop state
+  const [draggedAssetId, setDraggedAssetId] = useState<string | null>(null);
+  const [draggedAssetIds, setDraggedAssetIds] = useState<string[]>([]);
+  const [dragOverTarget, setDragOverTarget] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+
+  // Counts of assets per folder
+  const folderCounts = useMemo(() => {
+    const counts: Record<string, number> = {
+      all: assets.length,
+      __unorganized__: 0
+    };
+    allAvailableFolders.forEach(f => {
+      counts[f] = 0;
+    });
+    assets.forEach(a => {
+      if (!a.folder || !a.folder.trim()) {
+        counts.__unorganized__ += 1;
+      } else {
+        counts[a.folder] = (counts[a.folder] || 0) + 1;
+      }
+    });
+    return counts;
+  }, [assets, allAvailableFolders]);
+
+  // Move assets into folder handler
+  const handleMoveAssetsToFolder = (assetIds: string[], targetFolder: string) => {
+    if (!userRole.permissions.canEditRepository) {
+      notify('Unauthorized: Your role does not have privileges to modify asset folders.');
+      return;
+    }
+
+    const finalFolder = targetFolder === '__unorganized__' ? undefined : targetFolder;
+
+    setAssets(prev => prev.map(a => {
+      if (assetIds.includes(a.id)) {
+        return { ...a, folder: finalFolder };
+      }
+      return a;
+    }));
+
+    if (selectedAsset && assetIds.includes(selectedAsset.id)) {
+      setSelectedAsset(prev => prev ? { ...prev, folder: finalFolder } : null);
+    }
+
+    const affected = assets.filter(a => assetIds.includes(a.id));
+    const title = affected.length === 1 
+      ? `"${affected[0]?.name || 'Asset'}"` 
+      : `${affected.length} files`;
+
+    if (targetFolder === '__unorganized__') {
+      notify(`Moved ${title} to Unorganized (removed from custom folder).`);
+    } else {
+      notify(`Moved ${title} into folder "${targetFolder}".`);
+    }
+  };
+
+  // Drag handlers
+  const handleDragStart = (asset: RepositoryAsset, e: React.DragEvent) => {
+    if (!userRole.permissions.canEditRepository) return;
+    const idsToMove = checkedAssetIds.includes(asset.id) && checkedAssetIds.length > 1
+      ? checkedAssetIds
+      : [asset.id];
+
+    setDraggedAssetId(asset.id);
+    setDraggedAssetIds(idsToMove);
+    setIsDragging(true);
+
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', asset.id);
+    e.dataTransfer.setData('application/json', JSON.stringify({ assetIds: idsToMove }));
+  };
+
+  const handleDragEnd = () => {
+    setDraggedAssetId(null);
+    setDraggedAssetIds([]);
+    setDragOverTarget(null);
+    setIsDragging(false);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleDragEnter = (folder: string) => {
+    setDragOverTarget(folder);
+  };
+
+  const handleDragLeave = (folder: string, e: React.DragEvent) => {
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+    setDragOverTarget(prev => (prev === folder ? null : prev));
+  };
+
+  const handleDropOnFolder = (targetFolder: string, e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOverTarget(null);
+    setIsDragging(false);
+
+    if (!userRole.permissions.canEditRepository) {
+      notify('Unauthorized: Cannot modify repository folders.');
+      return;
+    }
+
+    let idsToMove: string[] = [];
+    try {
+      const raw = e.dataTransfer.getData('application/json');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed.assetIds)) {
+          idsToMove = parsed.assetIds;
+        }
+      }
+    } catch {}
+
+    if (idsToMove.length === 0) {
+      const plainId = e.dataTransfer.getData('text/plain');
+      if (plainId) idsToMove = [plainId];
+      else if (draggedAssetIds.length > 0) idsToMove = draggedAssetIds;
+      else if (draggedAssetId) idsToMove = [draggedAssetId];
+    }
+
+    if (idsToMove.length === 0) return;
+    handleMoveAssetsToFolder(idsToMove, targetFolder);
+  };
+
+  // Folder CRUD handlers
+  const handleCreateFolder = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const trimmed = newFolderName.trim();
+    if (!trimmed) return;
+    if (allAvailableFolders.some(f => f.toLowerCase() === trimmed.toLowerCase())) {
+      notify(`Folder "${trimmed}" already exists.`);
+      return;
+    }
+    setCustomFolders(prev => [...prev, trimmed]);
+    setNewFolderName('');
+    setIsCreatingFolder(false);
+    setActiveFolder(trimmed);
+    notify(`Created custom folder "${trimmed}".`);
+  };
+
+  const handleDeleteFolder = (folderToDelete: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!userRole.permissions.canEditRepository) {
+      notify('Unauthorized: Cannot delete folders.');
+      return;
+    }
+    setAssets(prev => prev.map(a => a.folder === folderToDelete ? { ...a, folder: undefined } : a));
+    setCustomFolders(prev => prev.filter(f => f !== folderToDelete));
+    if (activeFolder === folderToDelete) {
+      setActiveFolder(null);
+    }
+    notify(`Deleted folder "${folderToDelete}". Assets moved to Unorganized.`);
+  };
+
+  const handleSaveRenameFolder = (oldName: string) => {
+    const trimmed = editingFolderInput.trim();
+    if (!trimmed || trimmed === oldName) {
+      setEditingFolderOriginal(null);
+      return;
+    }
+    if (allAvailableFolders.some(f => f.toLowerCase() === trimmed.toLowerCase() && f.toLowerCase() !== oldName.toLowerCase())) {
+      notify(`A folder named "${trimmed}" already exists.`);
+      return;
+    }
+    setCustomFolders(prev => prev.map(f => f === oldName ? trimmed : f));
+    setAssets(prev => prev.map(a => a.folder === oldName ? { ...a, folder: trimmed } : a));
+    if (activeFolder === oldName) {
+      setActiveFolder(trimmed);
+    }
+    setEditingFolderOriginal(null);
+    setEditingFolderInput('');
+    notify(`Renamed folder "${oldName}" to "${trimmed}".`);
+  };
 
   const statusCounts = useMemo(() => {
     const counts = { all: assets.length, Ready: 0, Processing: 0, Error: 0 };
@@ -494,9 +723,13 @@ export default function AssetRepository({ userRole, assets, setAssets, viewMode 
       const matchesType = filterType === 'all' || a.type === filterType;
       const assetStatus = a.status || 'Ready';
       const matchesStatus = statusFilter === 'all' || assetStatus === statusFilter;
-      return matchesType && matchesStatus;
+      const matchesFolder = 
+        activeFolder === null ? true :
+        activeFolder === '__unorganized__' ? (!a.folder || !a.folder.trim()) :
+        a.folder === activeFolder;
+      return matchesType && matchesStatus && matchesFolder;
     });
-  }, [assets, filterType, statusFilter]);
+  }, [assets, filterType, statusFilter, activeFolder]);
 
   const filteredAssetIds = useMemo(() => filteredAssets.map(a => a.id), [filteredAssets]);
 
@@ -765,6 +998,30 @@ export default function AssetRepository({ userRole, assets, setAssets, viewMode 
                   <span>Tag ({checkedAssetIds.length})</span>
                 </button>
 
+                {/* Bulk Move to Folder */}
+                <div className="relative">
+                  <select
+                    id="bulk-move-folder-select"
+                    value={bulkMoveFolder}
+                    onChange={(e) => {
+                      const target = e.target.value;
+                      if (!target) return;
+                      handleMoveAssetsToFolder(checkedAssetIds, target);
+                      setBulkMoveFolder('');
+                    }}
+                    disabled={batchOperation !== null || !userRole.permissions.canEditRepository}
+                    className="px-2.5 py-1.5 bg-purple-700 hover:bg-purple-600 text-white rounded-lg text-xs font-bold transition-all shadow-md cursor-pointer disabled:opacity-50 appearance-none pr-7 border border-purple-500/50"
+                    title={`Move all ${checkedAssetIds.length} selected assets to a folder`}
+                  >
+                    <option value="" disabled>📁 Move to Folder ({checkedAssetIds.length})...</option>
+                    <option value="__unorganized__">Remove from Folder (Unorganized)</option>
+                    {allAvailableFolders.map(folder => (
+                      <option key={folder} value={folder}>📁 {folder}</option>
+                    ))}
+                  </select>
+                  <Folder className="w-3.5 h-3.5 text-purple-200 pointer-events-none absolute right-2 top-2" />
+                </div>
+
                 {/* Bulk Delete */}
                 <button
                   id="bulk-delete-header-btn"
@@ -810,14 +1067,273 @@ export default function AssetRepository({ userRole, assets, setAssets, viewMode 
         </div>
       )}
 
+      {/* Custom Folders & Directory Shelf with HTML5 Drag-and-Drop */}
+      <div 
+        id="asset-repository-folders-shelf"
+        className={`p-4 rounded-xl border transition-all ${
+          isDragging 
+            ? 'bg-slate-950 border-cyan-500/80 shadow-2xl shadow-cyan-950/40 ring-2 ring-cyan-500/40' 
+            : 'bg-slate-950 p-4 border border-slate-900 shadow-xl'
+        }`}
+      >
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-900">
+          <div className="flex items-center gap-2 flex-wrap">
+            <FolderOpen className="w-4 h-4 text-cyan-400" />
+            <h4 className="text-xs font-bold text-white font-sans uppercase tracking-wider">
+              Custom Folders & Directory Shelf
+            </h4>
+            <span className="text-[10px] font-mono text-slate-400 bg-slate-900 px-2 py-0.5 rounded-full border border-slate-800">
+              HTML5 Drag &amp; Drop Target
+            </span>
+            {isDragging && (
+              <span className="text-[10px] font-mono font-bold text-cyan-300 bg-cyan-950/90 border border-cyan-400/60 px-2.5 py-0.5 rounded-full flex items-center gap-1.5 animate-pulse shadow-md shadow-cyan-950/50">
+                <span className="w-2 h-2 rounded-full bg-cyan-400 animate-ping" />
+                Drop file over any folder to move
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            {!isCreatingFolder ? (
+              <button
+                type="button"
+                id="create-new-folder-btn"
+                onClick={() => {
+                  if (!userRole.permissions.canEditRepository) {
+                    notify('Unauthorized: Admin or Editor role required to create folders.');
+                    return;
+                  }
+                  setIsCreatingFolder(true);
+                }}
+                className="px-2.5 py-1 bg-slate-900 hover:bg-slate-800 text-cyan-400 hover:text-cyan-300 border border-slate-800 hover:border-cyan-500/40 rounded-lg text-xs font-mono font-semibold flex items-center gap-1.5 transition-all cursor-pointer shadow-xs"
+              >
+                <FolderPlus className="w-3.5 h-3.5" />
+                <span>+ New Folder</span>
+              </button>
+            ) : (
+              <form onSubmit={handleCreateFolder} className="flex items-center gap-1.5 animate-fadeIn">
+                <input
+                  type="text"
+                  autoFocus
+                  value={newFolderName}
+                  onChange={(e) => setNewFolderName(e.target.value)}
+                  placeholder="Custom folder name..."
+                  className="px-2.5 py-1 bg-slate-900 border border-cyan-500/70 rounded text-xs text-white font-sans focus:outline-none focus:ring-1 focus:ring-cyan-400 w-40 sm:w-48"
+                />
+                <button
+                  type="submit"
+                  className="p-1 bg-cyan-600 hover:bg-cyan-500 text-white rounded text-xs transition-colors cursor-pointer"
+                  title="Create folder"
+                >
+                  <Check className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsCreatingFolder(false);
+                    setNewFolderName('');
+                  }}
+                  className="p-1 bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white rounded text-xs transition-colors cursor-pointer"
+                  title="Cancel"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </form>
+            )}
+          </div>
+        </div>
+
+        {/* Folders Drop Targets Grid */}
+        <div className="pt-3 flex flex-wrap items-center gap-2">
+          {/* All Files Tab */}
+          <div
+            id="folder-drop-all"
+            onClick={() => setActiveFolder(null)}
+            className={`px-3 py-2 rounded-xl border text-xs font-sans transition-all flex items-center gap-2 cursor-pointer select-none ${
+              activeFolder === null
+                ? 'bg-red-650 text-white border-red-500 shadow-md shadow-red-950/40 font-bold'
+                : 'bg-slate-900/60 border-slate-800/80 text-slate-400 hover:text-white hover:border-slate-700'
+            }`}
+            title="Display all media assets in repository"
+          >
+            <Folder className="w-3.5 h-3.5" />
+            <span>All Assets</span>
+            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-black/30 border border-white/10 font-bold">
+              {assets.length}
+            </span>
+          </div>
+
+          {/* Unorganized / Root Target (Drop target to unassign from custom folder) */}
+          <div
+            id="folder-drop-unorganized"
+            onClick={() => setActiveFolder('__unorganized__')}
+            onDragOver={handleDragOver}
+            onDragEnter={() => handleDragEnter('__unorganized__')}
+            onDragLeave={(e) => handleDragLeave('__unorganized__', e)}
+            onDrop={(e) => handleDropOnFolder('__unorganized__', e)}
+            className={`px-3 py-2 rounded-xl border text-xs font-sans transition-all flex items-center gap-2 cursor-pointer select-none ${
+              dragOverTarget === '__unorganized__'
+                ? 'bg-amber-950/90 border-amber-400 text-amber-200 ring-2 ring-amber-400/60 scale-105 shadow-xl animate-pulse font-bold'
+                : activeFolder === '__unorganized__'
+                ? 'bg-amber-600/30 text-amber-200 border-amber-500 font-bold shadow-md'
+                : isDragging
+                ? 'bg-slate-900/90 border-dashed border-amber-500/50 text-slate-300 hover:border-amber-400'
+                : 'bg-slate-900/60 border-slate-800/80 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+            }`}
+            title="Drop files here to remove them from folders (Unorganized)"
+          >
+            <FolderMinus className="w-3.5 h-3.5 text-amber-400" />
+            <span>Unorganized</span>
+            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-black/30 border border-white/10">
+              {folderCounts.__unorganized__ || 0}
+            </span>
+            {dragOverTarget === '__unorganized__' && (
+              <span className="text-[10px] font-mono bg-amber-400 text-slate-950 font-extrabold px-1.5 py-0.2 rounded animate-bounce">
+                Drop to Remove Folder
+              </span>
+            )}
+          </div>
+
+          {/* Custom Folders */}
+          {allAvailableFolders.map((folder) => {
+            const isTarget = dragOverTarget === folder;
+            const isActive = activeFolder === folder;
+            const count = folderCounts[folder] || 0;
+            const isEditing = editingFolderOriginal === folder;
+
+            return (
+              <div
+                key={folder}
+                id={`folder-drop-target-${folder.toLowerCase().replace(/[^a-z0-9]/g, '-')}`}
+                onClick={() => {
+                  if (!isEditing) {
+                    setActiveFolder(isActive ? null : folder);
+                  }
+                }}
+                onDragOver={handleDragOver}
+                onDragEnter={() => handleDragEnter(folder)}
+                onDragLeave={(e) => handleDragLeave(folder, e)}
+                onDrop={(e) => handleDropOnFolder(folder, e)}
+                className={`group/folder relative px-3 py-2 rounded-xl border text-xs font-sans transition-all flex items-center gap-2 cursor-pointer select-none ${
+                  isTarget
+                    ? 'bg-cyan-950/90 border-cyan-400 text-cyan-200 ring-2 ring-cyan-400/70 scale-105 shadow-xl shadow-cyan-950/50 animate-pulse font-bold'
+                    : isActive
+                    ? 'bg-purple-950/60 border-purple-500 text-purple-200 font-bold shadow-md shadow-purple-950/30 ring-1 ring-purple-500/40'
+                    : isDragging
+                    ? 'bg-slate-900/90 border-dashed border-cyan-500/50 text-slate-300 hover:border-cyan-400 hover:bg-slate-850'
+                    : 'bg-slate-900/60 border-slate-800/80 text-slate-300 hover:text-white hover:border-slate-700'
+                }`}
+                title={isDragging ? `Drop files here to move into "${folder}"` : `Filter by folder: "${folder}"`}
+              >
+                {isActive ? (
+                  <FolderOpen className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                ) : isTarget ? (
+                  <FolderCheck className="w-3.5 h-3.5 text-cyan-400 animate-bounce shrink-0" />
+                ) : (
+                  <Folder className="w-3.5 h-3.5 text-cyan-400 shrink-0 group-hover/folder:text-cyan-300" />
+                )}
+
+                {isEditing ? (
+                  <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                    <input
+                      type="text"
+                      autoFocus
+                      value={editingFolderInput}
+                      onChange={(e) => setEditingFolderInput(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleSaveRenameFolder(folder);
+                        if (e.key === 'Escape') setEditingFolderOriginal(null);
+                      }}
+                      className="w-28 px-1.5 py-0.5 bg-slate-950 border border-cyan-500 text-xs text-white rounded font-sans"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleSaveRenameFolder(folder)}
+                      className="p-0.5 text-emerald-400 hover:text-emerald-300"
+                      title="Save name"
+                    >
+                      <Check className="w-3 h-3" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditingFolderOriginal(null)}
+                      className="p-0.5 text-slate-400 hover:text-white"
+                      title="Cancel"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ) : (
+                  <>
+                    <span className="font-medium truncate max-w-[140px]">{folder}</span>
+                    <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-black/30 border border-white/10 shrink-0">
+                      {count}
+                    </span>
+
+                    {isTarget ? (
+                      <span className="text-[10px] font-mono bg-cyan-400 text-slate-950 font-extrabold px-1.5 py-0.2 rounded animate-bounce">
+                        Drop to Move
+                      </span>
+                    ) : (
+                      userRole.permissions.canEditRepository && (
+                        <div 
+                          className="hidden group-hover/folder:flex items-center gap-1 ml-0.5"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingFolderOriginal(folder);
+                              setEditingFolderInput(folder);
+                            }}
+                            className="p-0.5 text-slate-400 hover:text-cyan-300 transition-colors cursor-pointer"
+                            title={`Rename folder "${folder}"`}
+                          >
+                            <Edit2 className="w-2.5 h-2.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => handleDeleteFolder(folder, e)}
+                            className="p-0.5 text-slate-400 hover:text-red-400 transition-colors cursor-pointer"
+                            title={`Delete folder "${folder}"`}
+                          >
+                            <Trash2 className="w-2.5 h-2.5" />
+                          </button>
+                        </div>
+                      )
+                    )}
+                  </>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         
         {/* Left Side: Asset Table/List */}
         <div className="lg:col-span-5 bg-slate-950 border border-slate-900 rounded-xl p-5 space-y-3">
           <div className="flex items-center justify-between border-b border-slate-900 pb-2">
-            <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest block">
-              Available Studio Files ({filteredAssets.length})
-            </span>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest block">
+                Available Studio Files ({filteredAssets.length})
+              </span>
+              {activeFolder !== null && (
+                <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-purple-950/60 border border-purple-500/40 text-[10px] font-mono text-purple-300">
+                  <Folder className="w-2.5 h-2.5 text-purple-400" />
+                  <span>{activeFolder === '__unorganized__' ? 'Unorganized' : activeFolder}</span>
+                  <button
+                    type="button"
+                    onClick={() => setActiveFolder(null)}
+                    className="hover:text-white ml-0.5 text-purple-400 cursor-pointer"
+                    title="Clear folder filter"
+                  >
+                    <X className="w-2.5 h-2.5" />
+                  </button>
+                </div>
+              )}
+            </div>
             {checkedAssetIds.length > 0 && (
               <div className="flex items-center gap-2">
                 <button
@@ -908,182 +1424,231 @@ export default function AssetRepository({ userRole, assets, setAssets, viewMode 
             </div>
           ) : (
               <div className={viewMode === 'grid' ? "grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[460px] overflow-y-auto pr-1" : "space-y-2 max-h-[460px] overflow-y-auto pr-1"}>
-              {filteredAssets.map((asset) => (
-                <motion.div
-                  key={asset.id}
-                  id={`asset-entry-${asset.id}`}
-                  initial={{ opacity: 0, y: 4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ duration: 0.15 }}
-                  onClick={() => {
-                    setSelectedAsset(asset);
-                    setAnalysisText('');
-                    setPreviewModalAsset(asset);
-                    setIsPreviewModalOpen(true);
-                  }}
-                  className={`p-3 rounded-lg border text-xs font-sans transition-all flex justify-between items-center cursor-pointer group ${
-                    batchOperation?.currentAssetId === asset.id
-                      ? batchOperation.type === 'download'
-                        ? 'bg-emerald-950/40 border-emerald-500 shadow-lg shadow-emerald-950/50 ring-1 ring-emerald-500/50'
-                        : 'bg-red-950/40 border-red-500 shadow-lg shadow-red-950/50 ring-1 ring-red-500/50 animate-pulse'
-                      : selectedAsset?.id === asset.id 
-                      ? 'bg-slate-900 border-red-500/50 shadow-md' 
-                      : 'bg-slate-950/40 border-slate-900 hover:border-slate-800'
-                  }`}
-                >
-                  <div className="flex items-center space-x-3 min-w-0 flex-1">
-                    <input
-                      type="checkbox"
-                      checked={checkedAssetIds.includes(asset.id)}
-                      onClick={(e) => e.stopPropagation()}
-                      onChange={(e) => {
-                        const checked = e.target.checked;
-                        if (checked) {
-                          setCheckedAssetIds(prev => [...prev, asset.id]);
-                        } else {
-                          setCheckedAssetIds(prev => prev.filter(id => id !== asset.id));
-                        }
-                      }}
-                      className="w-3.5 h-3.5 accent-red-650 bg-slate-950 border-slate-800 rounded cursor-pointer shrink-0"
-                    />
+              {filteredAssets.map((asset) => {
+                const isItemDragged = isDragging && (draggedAssetId === asset.id || draggedAssetIds.includes(asset.id));
+                return (
+                  <motion.div
+                    key={asset.id}
+                    id={`asset-entry-${asset.id}`}
+                    draggable={userRole.permissions.canEditRepository}
+                    onDragStart={(e) => handleDragStart(asset, e)}
+                    onDragEnd={handleDragEnd}
+                    initial={{ opacity: 0, y: 4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.15 }}
+                    onClick={() => {
+                      setSelectedAsset(asset);
+                      setAnalysisText('');
+                      setPreviewModalAsset(asset);
+                      setIsPreviewModalOpen(true);
+                    }}
+                    className={`p-3 rounded-lg border text-xs font-sans transition-all flex justify-between items-center cursor-pointer group ${
+                      isItemDragged
+                        ? 'opacity-40 border-dashed border-cyan-400 bg-cyan-950/40 ring-1 ring-cyan-500/50 scale-[0.98]'
+                        : batchOperation?.currentAssetId === asset.id
+                        ? batchOperation.type === 'download'
+                          ? 'bg-emerald-950/40 border-emerald-500 shadow-lg shadow-emerald-950/50 ring-1 ring-emerald-500/50'
+                          : 'bg-red-950/40 border-red-500 shadow-lg shadow-red-950/50 ring-1 ring-red-500/50 animate-pulse'
+                        : selectedAsset?.id === asset.id 
+                        ? 'bg-slate-900 border-red-500/50 shadow-md' 
+                        : 'bg-slate-950/40 border-slate-900 hover:border-slate-800'
+                    }`}
+                  >
+                    <div className="flex items-center space-x-2.5 min-w-0 flex-1">
+                      {/* Drag Handle */}
+                      {userRole.permissions.canEditRepository && (
+                        <div 
+                          title="Drag to move this file into a custom folder"
+                          className="p-0.5 text-slate-600 group-hover:text-cyan-400 cursor-grab active:cursor-grabbing shrink-0 transition-colors"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <GripVertical className="w-3.5 h-3.5" />
+                        </div>
+                      )}
 
-                    {/* Clickable Media Type Icon for Quick Preview Modal */}
-                    <button
-                      type="button"
-                      id={`asset-icon-preview-${asset.id}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedAsset(asset);
-                        setAnalysisText('');
-                        setPreviewModalAsset(asset);
-                        setIsPreviewModalOpen(true);
-                      }}
-                      title={`Preview ${asset.type}: ${asset.name}`}
-                      aria-label={`Preview ${asset.type} ${asset.name}`}
-                      className="p-1.5 rounded-lg bg-slate-900/90 hover:bg-slate-800 border border-slate-800/80 hover:border-cyan-500/50 transition-all shrink-0 cursor-pointer group/typeicon"
-                    >
-                      {asset.type === 'video' && <FileVideo className="w-4 h-4 text-red-400 group-hover/typeicon:scale-110 transition-transform" />}
-                      {asset.type === 'image' && <ImageIcon className="w-4 h-4 text-blue-400 group-hover/typeicon:scale-110 transition-transform" />}
-                      {asset.type === 'audio' && <Volume2 className="w-4 h-4 text-green-400 group-hover/typeicon:scale-110 transition-transform" />}
-                      {asset.type === 'script' && <FileText className="w-4 h-4 text-cyan-400 group-hover/typeicon:scale-110 transition-transform" />}
-                      {asset.type === 'subtitles' && <Layers className="w-4 h-4 text-yellow-400 group-hover/typeicon:scale-110 transition-transform" />}
-                    </button>
-                    
-                    <div className="space-y-0.5 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <h4 className="font-semibold text-slate-200 line-clamp-1 group-hover:text-white transition-colors">{asset.name}</h4>
-                        {asset.id.startsWith('drive-') && (
-                          <span className="px-1.5 py-0.5 bg-blue-500/15 text-blue-300 border border-blue-500/40 rounded text-[9px] font-mono shrink-0 flex items-center gap-1">
-                            <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
-                            Drive
-                          </span>
-                        )}
-                        {asset.category && asset.category !== 'Google Drive' && (
-                          <span className="px-1.5 py-0.5 bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 rounded text-[9px] font-mono shrink-0">
-                            {asset.category}
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-[10px] text-slate-500 font-mono tracking-wide">{asset.createdAt} • {asset.size || 'N/A'}</p>
-                    </div>
-                  </div>
+                      <input
+                        type="checkbox"
+                        checked={checkedAssetIds.includes(asset.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          if (checked) {
+                            setCheckedAssetIds(prev => [...prev, asset.id]);
+                          } else {
+                            setCheckedAssetIds(prev => prev.filter(id => id !== asset.id));
+                          }
+                        }}
+                        className="w-3.5 h-3.5 accent-red-650 bg-slate-950 border-slate-800 rounded cursor-pointer shrink-0"
+                      />
 
-                  <div className="flex items-center gap-2">
-                    {batchOperation?.currentAssetId === asset.id ? (
-                      <span 
-                        id={`asset-batch-badge-${asset.id}`}
-                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold border shrink-0 transition-all flex items-center gap-1.5 animate-pulse ${
-                          batchOperation.type === 'download'
-                            ? 'bg-emerald-500/25 text-emerald-300 border-emerald-500/60 shadow-[0_0_12px_rgba(16,185,129,0.5)]'
-                            : 'bg-red-500/25 text-red-300 border-red-500/60 shadow-[0_0_12px_rgba(239,68,68,0.5)]'
-                        }`}
-                      >
-                        <Loader2 className="w-3 h-3 animate-spin" />
-                        <span>{batchOperation.type === 'download' ? 'Downloading...' : 'Purging...'}</span>
-                      </span>
-                    ) : (
+                      {/* Clickable Media Type Icon for Quick Preview Modal */}
                       <button
                         type="button"
-                        id={`asset-status-badge-${asset.id}`}
-                        onClick={(e) => handleCycleStatus(asset, e)}
-                        title={
-                          asset.status === 'Error'
-                            ? 'Status: Error (Pipeline failure or format warning) — Click to re-process and validate'
-                            : asset.status === 'Processing'
-                            ? 'Status: Processing (Asset in encoding/pipeline) — Click to mark Ready'
-                            : 'Status: Ready (Broadcast ready & verified) — Click to cycle status'
-                        }
-                        className={`px-2.5 py-1 rounded-full text-[10px] font-mono font-bold border shrink-0 transition-all flex items-center gap-1.5 cursor-pointer shadow-xs select-none ${
-                          asset.status === 'Processing'
-                            ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border-amber-500/50 hover:border-amber-400 ring-1 ring-amber-500/35 animate-pulse shadow-[0_0_12px_rgba(245,158,11,0.3)]'
-                            : asset.status === 'Error'
-                            ? 'bg-red-500/25 hover:bg-red-500/35 text-red-200 border-red-500/60 hover:border-red-400 ring-1 ring-red-500/40 shadow-[0_0_14px_rgba(239,68,68,0.35)]'
-                            : 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border-emerald-500/40 hover:border-emerald-400 ring-1 ring-emerald-500/25 shadow-[0_0_10px_rgba(16,185,129,0.25)]'
-                        }`}
+                        id={`asset-icon-preview-${asset.id}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedAsset(asset);
+                          setAnalysisText('');
+                          setPreviewModalAsset(asset);
+                          setIsPreviewModalOpen(true);
+                        }}
+                        title={`Preview ${asset.type}: ${asset.name}`}
+                        aria-label={`Preview ${asset.type} ${asset.name}`}
+                        className="p-1.5 rounded-lg bg-slate-900/90 hover:bg-slate-800 border border-slate-800/80 hover:border-cyan-500/50 transition-all shrink-0 cursor-pointer group/typeicon"
                       >
-                        {asset.status === 'Processing' ? (
-                          <Loader2 className="w-3 h-3 text-amber-400 animate-spin shrink-0" />
-                        ) : asset.status === 'Error' ? (
-                          <AlertTriangle className="w-3 h-3 text-red-400 shrink-0" />
-                        ) : (
-                          <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />
-                        )}
-                        <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                          asset.status === 'Processing'
-                            ? 'bg-amber-400 animate-ping shadow-[0_0_6px_rgba(251,191,36,0.9)]'
-                            : asset.status === 'Error'
-                            ? 'bg-red-400 shadow-[0_0_6px_rgba(248,113,113,0.9)]'
-                            : 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.95)]'
-                        }`} />
-                        <span className="uppercase tracking-wider font-extrabold">{asset.status || 'Ready'}</span>
+                        {asset.type === 'video' && <FileVideo className="w-4 h-4 text-red-400 group-hover/typeicon:scale-110 transition-transform" />}
+                        {asset.type === 'image' && <ImageIcon className="w-4 h-4 text-blue-400 group-hover/typeicon:scale-110 transition-transform" />}
+                        {asset.type === 'audio' && <Volume2 className="w-4 h-4 text-green-400 group-hover/typeicon:scale-110 transition-transform" />}
+                        {asset.type === 'script' && <FileText className="w-4 h-4 text-cyan-400 group-hover/typeicon:scale-110 transition-transform" />}
+                        {asset.type === 'subtitles' && <Layers className="w-4 h-4 text-yellow-400 group-hover/typeicon:scale-110 transition-transform" />}
                       </button>
-                    )}
+                      
+                      <div className="space-y-0.5 min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <h4 className="font-semibold text-slate-200 line-clamp-1 group-hover:text-white transition-colors">{asset.name}</h4>
+                          {asset.id.startsWith('drive-') && (
+                            <span className="px-1.5 py-0.5 bg-blue-500/15 text-blue-300 border border-blue-500/40 rounded text-[9px] font-mono shrink-0 flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+                              Drive
+                            </span>
+                          )}
+                          {asset.folder && (
+                            <span 
+                              className="px-1.5 py-0.5 bg-purple-950/60 text-purple-300 border border-purple-800/60 rounded text-[9px] font-mono shrink-0 flex items-center gap-1"
+                              title={`Folder: ${asset.folder}`}
+                            >
+                              <Folder className="w-2.5 h-2.5 text-purple-400" />
+                              {asset.folder}
+                            </span>
+                          )}
+                          {asset.category && asset.category !== 'Google Drive' && (
+                            <span className="px-1.5 py-0.5 bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 rounded text-[9px] font-mono shrink-0">
+                              {asset.category}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[10px] text-slate-500 font-mono tracking-wide">{asset.createdAt} • {asset.size || 'N/A'}</p>
+                      </div>
+                    </div>
 
-                    {/* Dedicated Clickable Preview Icon Button */}
-                    <button
-                      type="button"
-                      id={`asset-preview-btn-${asset.id}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedAsset(asset);
-                        setAnalysisText('');
-                        setPreviewModalAsset(asset);
-                        setIsPreviewModalOpen(true);
-                      }}
-                      title={
-                        asset.type === 'video' 
-                          ? "Play video & inspect content details in modal" 
-                          : asset.type === 'image' 
-                          ? "View image & inspect content details in modal" 
-                          : asset.type === 'audio'
-                          ? "Listen to audio & inspect content details in modal"
-                          : "Inspect transcript & document details in modal"
-                      }
-                      aria-label={`Preview and inspect ${asset.name}`}
-                      className="px-2 py-1 text-slate-400 hover:text-cyan-300 rounded-md bg-slate-900/80 hover:bg-cyan-500/15 border border-slate-800 hover:border-cyan-500/40 shrink-0 transition-all cursor-pointer flex items-center gap-1.5 group/preview shadow-xs"
-                    >
-                      <Eye className="w-3.5 h-3.5 text-cyan-400 group-hover/preview:scale-110 transition-transform" />
-                      <span className="hidden xl:inline text-[10px] font-mono font-medium text-slate-300 group-hover/preview:text-cyan-300">
-                        Preview
-                      </span>
-                    </button>
-                    <button
-                      onClick={(e) => handleDownloadSingle(asset, e)}
-                      title="Download asset"
-                      className="p-1 text-slate-500 hover:text-emerald-400 rounded hover:bg-slate-900 shrink-0 transition-all cursor-pointer"
-                    >
-                      <Download className="w-4 h-4" />
-                    </button>
-                    <button
-                      onClick={(e) => handleDeleteAsset(asset.id, e)}
-                      title="Delete asset"
-                      className="p-1 text-slate-500 hover:text-red-400 rounded hover:bg-slate-900 shrink-0 transition-all cursor-pointer"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </motion.div>
-              ))}
+                    <div className="flex items-center gap-2">
+                      {batchOperation?.currentAssetId === asset.id ? (
+                        <span 
+                          id={`asset-batch-badge-${asset.id}`}
+                          className={`px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold border shrink-0 transition-all flex items-center gap-1.5 animate-pulse ${
+                            batchOperation.type === 'download'
+                              ? 'bg-emerald-500/25 text-emerald-300 border-emerald-500/60 shadow-[0_0_12px_rgba(16,185,129,0.5)]'
+                              : 'bg-red-500/25 text-red-300 border-red-500/60 shadow-[0_0_12px_rgba(239,68,68,0.5)]'
+                          }`}
+                        >
+                          <Loader2 className="w-3 h-3 animate-spin" />
+                          <span>{batchOperation.type === 'download' ? 'Downloading...' : 'Purging...'}</span>
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          id={`asset-status-badge-${asset.id}`}
+                          onClick={(e) => handleCycleStatus(asset, e)}
+                          title={
+                            asset.status === 'Error'
+                              ? 'Status: Error (Pipeline failure or format warning) — Click to re-process and validate'
+                              : asset.status === 'Processing'
+                              ? 'Status: Processing (Asset in encoding/pipeline) — Click to mark Ready'
+                              : 'Status: Ready (Broadcast ready & verified) — Click to cycle status'
+                          }
+                          className={`px-2.5 py-1 rounded-full text-[10px] font-mono font-bold border shrink-0 transition-all flex items-center gap-1.5 cursor-pointer shadow-xs select-none ${
+                            asset.status === 'Processing'
+                              ? 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-200 border-amber-500/50 hover:border-amber-400 ring-1 ring-amber-500/35 animate-pulse shadow-[0_0_12px_rgba(245,158,11,0.3)]'
+                              : asset.status === 'Error'
+                              ? 'bg-red-500/25 hover:bg-red-500/35 text-red-200 border-red-500/60 hover:border-red-400 ring-1 ring-red-500/40 shadow-[0_0_14px_rgba(239,68,68,0.35)]'
+                              : 'bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border-emerald-500/40 hover:border-emerald-400 ring-1 ring-emerald-500/25 shadow-[0_0_10px_rgba(16,185,129,0.25)]'
+                          }`}
+                        >
+                          {asset.status === 'Processing' ? (
+                            <Loader2 className="w-3 h-3 text-amber-400 animate-spin shrink-0" />
+                          ) : asset.status === 'Error' ? (
+                            <AlertTriangle className="w-3 h-3 text-red-400 shrink-0" />
+                          ) : (
+                            <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />
+                          )}
+                          <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
+                            asset.status === 'Processing'
+                              ? 'bg-amber-400 animate-ping shadow-[0_0_6px_rgba(251,191,36,0.9)]'
+                              : asset.status === 'Error'
+                              ? 'bg-red-400 shadow-[0_0_6px_rgba(248,113,113,0.9)]'
+                              : 'bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.95)]'
+                          }`} />
+                          <span className="uppercase tracking-wider font-extrabold">{asset.status || 'Ready'}</span>
+                        </button>
+                      )}
+
+                      {/* Quick Move Folder Dropdown */}
+                      {userRole.permissions.canEditRepository && (
+                        <select
+                          value={asset.folder || ''}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            const val = e.target.value;
+                            handleMoveAssetsToFolder([asset.id], val || '__unorganized__');
+                          }}
+                          title="Move file to custom folder"
+                          className="bg-slate-900 hover:bg-slate-850 border border-slate-800 text-[10px] font-mono text-slate-400 hover:text-cyan-300 rounded px-1.5 py-1 cursor-pointer max-w-[80px] truncate shrink-0 transition-colors"
+                        >
+                          <option value="" disabled>Folder...</option>
+                          <option value="">(Unorganized)</option>
+                          {allAvailableFolders.map(f => (
+                            <option key={f} value={f}>📁 {f}</option>
+                          ))}
+                        </select>
+                      )}
+
+                      {/* Dedicated Clickable Preview Icon Button */}
+                      <button
+                        type="button"
+                        id={`asset-preview-btn-${asset.id}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedAsset(asset);
+                          setAnalysisText('');
+                          setPreviewModalAsset(asset);
+                          setIsPreviewModalOpen(true);
+                        }}
+                        title={
+                          asset.type === 'video' 
+                            ? "Play video & inspect content details in modal" 
+                            : asset.type === 'image' 
+                            ? "View image & inspect content details in modal" 
+                            : asset.type === 'audio'
+                            ? "Listen to audio & inspect content details in modal"
+                            : "Inspect transcript & document details in modal"
+                        }
+                        aria-label={`Preview and inspect ${asset.name}`}
+                        className="px-2 py-1 text-slate-400 hover:text-cyan-300 rounded-md bg-slate-900/80 hover:bg-cyan-500/15 border border-slate-800 hover:border-cyan-500/40 shrink-0 transition-all cursor-pointer flex items-center gap-1.5 group/preview shadow-xs"
+                      >
+                        <Eye className="w-3.5 h-3.5 text-cyan-400 group-hover/preview:scale-110 transition-transform" />
+                        <span className="hidden xl:inline text-[10px] font-mono font-medium text-slate-300 group-hover/preview:text-cyan-300">
+                          Preview
+                        </span>
+                      </button>
+                      <button
+                        onClick={(e) => handleDownloadSingle(asset, e)}
+                        title="Download asset"
+                        className="p-1 text-slate-500 hover:text-emerald-400 rounded hover:bg-slate-900 shrink-0 transition-all cursor-pointer"
+                      >
+                        <Download className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={(e) => handleDeleteAsset(asset.id, e)}
+                        title="Delete asset"
+                        className="p-1 text-slate-500 hover:text-red-400 rounded hover:bg-slate-900 shrink-0 transition-all cursor-pointer"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </motion.div>
+                );
+              })}
             </div>
           )}
         </div>
@@ -1236,6 +1801,33 @@ export default function AssetRepository({ userRole, assets, setAssets, viewMode 
               <div className="grid grid-cols-2 gap-4 text-xs font-mono text-slate-500">
                 <div>Created Slot: <strong className="text-slate-400">{selectedAsset.createdAt}</strong></div>
                 <div>Calculated Size: <strong className="text-slate-400">{selectedAsset.size || '380 KB'}</strong></div>
+              </div>
+
+              {/* Folder specification and quick move dropdown */}
+              <div className="p-3 bg-slate-900/50 rounded-lg border border-slate-850 flex items-center justify-between gap-3 text-xs font-mono">
+                <div className="flex items-center gap-2 text-slate-400 min-w-0">
+                  <Folder className="w-4 h-4 text-purple-400 shrink-0" />
+                  <span className="shrink-0 text-slate-500">Folder:</span>
+                  <span className="text-purple-300 font-semibold truncate">
+                    {selectedAsset.folder || 'Unorganized / Root'}
+                  </span>
+                </div>
+                {userRole.permissions.canEditRepository && (
+                  <select
+                    value={selectedAsset.folder || ''}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      handleMoveAssetsToFolder([selectedAsset.id], val || '__unorganized__');
+                    }}
+                    className="bg-slate-950 border border-slate-800 text-xs text-slate-300 rounded px-2.5 py-1 font-sans cursor-pointer focus:border-cyan-500 shrink-0"
+                    title="Change folder for this asset"
+                  >
+                    <option value="">Move to: (Unorganized)</option>
+                    {allAvailableFolders.map(f => (
+                      <option key={f} value={f}>Move to: {f}</option>
+                    ))}
+                  </select>
+                )}
               </div>
 
             </motion.div>
