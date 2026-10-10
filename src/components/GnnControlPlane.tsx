@@ -78,6 +78,18 @@ const INITIAL_MCP_SERVERS: McpServerItem[] = [
     authMethod: 'API Key'
   },
   {
+    id: 'expo_mobile',
+    name: 'Expo Go Mobile Companion (@aigaming)',
+    type: 'Mobile',
+    status: 'connected',
+    desc: 'Live anchor teleprompter stream, field SRT camera hit & mobile app link for @aigaming/gnn-ai-studio',
+    latencyMs: 14,
+    scopesRequired: ['cloud.read', 'social.publish'],
+    endpoint: 'exp://exp.host/@aigaming/gnn-ai-studio',
+    lastSync: 'Real-time connected',
+    authMethod: 'API Key'
+  },
+  {
     id: 'github',
     name: 'GitHub MCP',
     type: 'Developer',

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   X, 
   Download, 
@@ -115,8 +116,6 @@ export default function AssetPreviewModal({
     return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
   }, []);
 
-  if (!isOpen || !asset) return null;
-
   const handleZoomIn = () => setZoom(prev => Math.min(prev + 0.25, 3));
   const handleZoomOut = () => setZoom(prev => Math.max(prev - 0.25, 0.5));
   const handleResetZoom = () => setZoom(1);
@@ -139,7 +138,7 @@ export default function AssetPreviewModal({
   };
 
   const handleCopyText = () => {
-    if (asset.lyrics_or_text) {
+    if (asset?.lyrics_or_text) {
       navigator.clipboard.writeText(asset.lyrics_or_text);
       setCopiedText(true);
       setTimeout(() => setCopiedText(false), 2000);
@@ -154,6 +153,7 @@ export default function AssetPreviewModal({
   };
 
   const getTypeIcon = () => {
+    if (!asset) return null;
     switch (asset.type) {
       case 'video':
         return <FileVideo className="w-5 h-5 text-red-400" />;
@@ -169,20 +169,30 @@ export default function AssetPreviewModal({
   };
 
   return (
-    <div 
-      id="asset-preview-modal-backdrop"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="asset-preview-title"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
-      className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-slate-950/85 backdrop-blur-md animate-fadeIn"
-    >
-      <div 
-        ref={containerRef}
-        className="w-full max-w-5xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[94vh] transition-all"
-      >
+    <AnimatePresence>
+      {isOpen && asset && (
+        <motion.div 
+          id="asset-preview-modal-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="asset-preview-title"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) onClose();
+          }}
+          className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 bg-slate-950/85 backdrop-blur-md"
+        >
+          <motion.div 
+            ref={containerRef}
+            initial={{ opacity: 0, scale: 0.94, y: 16 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.94, y: 16 }}
+            transition={{ type: "spring", duration: 0.28, bounce: 0.12 }}
+            className="w-full max-w-5xl bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[94vh] transition-all"
+          >
         {/* Header Bar */}
         <div className="flex items-center justify-between px-4 sm:px-6 py-3.5 border-b border-slate-800 bg-slate-950/70 shrink-0">
           <div className="flex items-center gap-3 min-w-0 flex-1 mr-3">
@@ -593,7 +603,9 @@ export default function AssetPreviewModal({
             </button>
           </div>
         </div>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
+  )}
+</AnimatePresence>
   );
 }

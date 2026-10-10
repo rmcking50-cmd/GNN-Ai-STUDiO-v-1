@@ -1,4 +1,5 @@
 import React, { useState, createContext, useContext, useEffect, useRef, useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import Sidebar, { ROLES } from './components/Sidebar';
 import AnalyticsDashboard from './components/AnalyticsDashboard';
 import NewsEditor from './components/NewsEditor';
@@ -14,7 +15,11 @@ import ScriptApprovalHub from './components/ScriptApprovalHub';
 import FastMcpVmixStudio from './components/FastMcpVmixStudio';
 import EmptyState from './components/EmptyState';
 import GnnBrainLogViewer from './components/GnnBrainLogViewer';
+import GoogleDriveConnector from './components/GoogleDriveConnector';
+import GmailNewsDesk from './components/GmailNewsDesk';
+import ExpoMobileCompanion from './components/ExpoMobileCompanion';
 import { 
+  Mail,
   Search, 
   Sparkles, 
   Plus, 
@@ -55,7 +60,9 @@ import {
   Maximize2,
   Minimize2,
   Bookmark,
-  Layers
+  Layers,
+  Proportions,
+  Smartphone
 } from 'lucide-react';
 import { RepositoryAsset, GeneratedScript, SocialPost, ChatMessage, UserRolePayload } from './types';
 
@@ -477,6 +484,7 @@ function MainAppContent() {
   const [showQuickActionMenu, setShowQuickActionMenu] = useState<boolean>(false);
   const [showNewScriptModal, setShowNewScriptModal] = useState<boolean>(false);
   const [showNewAssetModal, setShowNewAssetModal] = useState<boolean>(false);
+  const [showExpoModal, setShowExpoModal] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Workspace card collapse state for dense layouts
@@ -497,6 +505,92 @@ function MainAppContent() {
 
   // Temporary snap-to-grid toggle state via keyboard shortcut ('Alt' + drag) while resizing workspace card
   const [isAltSnapToggled, setIsAltSnapToggled] = useState<boolean>(false);
+
+  // Aspect Ratio Lock configuration (e.g. 16:9 for media player consistency, 4:3, 21:9, 1:1, 9:16)
+  const [isAspectRatioLocked, setIsAspectRatioLocked] = useState<boolean>(false);
+  const [aspectRatioValue, setAspectRatioValue] = useState<string>('16:9');
+  const [cardWidth, setCardWidth] = useState<number | null>(null);
+  const [showAspectRatioMenu, setShowAspectRatioMenu] = useState<boolean>(false);
+  const isAspectRatioLockedRef = useRef<boolean>(false);
+  const aspectRatioValueRef = useRef<string>('16:9');
+
+  const ASPECT_RATIO_PRESETS = [
+    { id: '16:9', label: '16:9 Broadcast', ratio: 16 / 9, desc: 'Widescreen HD/4K television & video streaming standard', icon: '📺' },
+    { id: '4:3', label: '4:3 Classic', ratio: 4 / 3, desc: 'Retro studio teleprompter & legacy broadcast display', icon: '📹' },
+    { id: '21:9', label: '21:9 Ultrawide', ratio: 21 / 9, desc: 'Cinematic master monitor & control room console', icon: '🎬' },
+    { id: '1:1', label: '1:1 Square', ratio: 1 / 1, desc: 'Social square stream feed & thumbnail reference', icon: '⏹️' },
+    { id: '9:16', label: '9:16 Vertical', ratio: 9 / 16, desc: 'Mobile shorts & vertical mobile news bulletin', icon: '📱' },
+  ];
+
+  useEffect(() => {
+    isAspectRatioLockedRef.current = isAspectRatioLocked;
+  }, [isAspectRatioLocked]);
+
+  useEffect(() => {
+    aspectRatioValueRef.current = aspectRatioValue;
+  }, [aspectRatioValue]);
+
+  // Outside click listener to dismiss aspect ratio menu
+  useEffect(() => {
+    if (!showAspectRatioMenu) return;
+    const handleOutsideClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('#workspace-aspect-ratio-lock-btn') && !target.closest('#workspace-aspect-ratio-menu-btn') && !target.closest('#workspace-aspect-ratio-menu') && !target.closest('#context-menu-aspect-ratio-btn')) {
+        setShowAspectRatioMenu(false);
+      }
+    };
+    window.addEventListener('click', handleOutsideClick);
+    return () => window.removeEventListener('click', handleOutsideClick);
+  }, [showAspectRatioMenu]);
+
+  // Toggle or assign Aspect Ratio Lock
+  const toggleAspectRatioLock = (newRatioId?: string) => {
+    if (isWorkspaceHeightLocked) {
+      triggerToast('Workspace dimensions are locked. Unlock height/dimensions first.');
+      return;
+    }
+
+    const targetRatioId = newRatioId || aspectRatioValue;
+    if (newRatioId) {
+      setAspectRatioValue(newRatioId);
+      aspectRatioValueRef.current = newRatioId;
+    }
+
+    const nextLocked = newRatioId ? true : !isAspectRatioLocked;
+    setIsAspectRatioLocked(nextLocked);
+    isAspectRatioLockedRef.current = nextLocked;
+
+    if (nextLocked) {
+      const targetPreset = ASPECT_RATIO_PRESETS.find(p => p.id === targetRatioId) || ASPECT_RATIO_PRESETS[0];
+      const cardEl = workspaceCardRef.current;
+      const currentHeight = cardHeight || cardEl?.getBoundingClientRect().height || 600;
+      const parentWidth = cardEl?.parentElement?.getBoundingClientRect().width || window.innerWidth;
+
+      let newHeight = currentHeight;
+      let newWidth = Math.round(newHeight * targetPreset.ratio);
+
+      if (newWidth > parentWidth) {
+        newWidth = Math.round(parentWidth);
+        newHeight = Math.round(newWidth / targetPreset.ratio);
+      }
+
+      newHeight = Math.max(minHeightRef.current, Math.min(maxHeightRef.current, newHeight));
+      newWidth = Math.round(newHeight * targetPreset.ratio);
+
+      if (snapToGridRef.current) {
+        const interval = snapGridIntervalRef.current || 50;
+        newHeight = Math.round(newHeight / interval) * interval;
+        newWidth = Math.round(newHeight * targetPreset.ratio);
+      }
+
+      setCardHeight(newHeight);
+      setCardWidth(newWidth);
+      triggerToast(`Aspect Ratio Locked: ${targetPreset.label} (${newWidth} × ${newHeight}px)`);
+    } else {
+      setCardWidth(null);
+      triggerToast('Aspect Ratio Lock disabled. Card dimensions returned to freeform.');
+    }
+  };
 
   useEffect(() => {
     snapToGridRef.current = isSnapToGrid;
@@ -680,7 +774,7 @@ function MainAppContent() {
     return () => window.removeEventListener('click', handleOutsideClick);
   }, [showColorPicker]);
 
-  // Draggable resize mouse handler to adjust workspace card height dynamically
+  // Draggable resize mouse handler to adjust workspace card dimensions dynamically
   const handleResizeMouseDown = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -689,51 +783,92 @@ function MainAppContent() {
       return;
     }
     setIsResizingCard(true);
+    const startX = e.clientX;
     const startY = e.clientY;
-    const startHeight = workspaceCardRef.current?.getBoundingClientRect().height || 600;
+    const startRect = workspaceCardRef.current?.getBoundingClientRect();
+    const startHeight = startRect?.height || 600;
+    const startWidth = startRect?.width || 1000;
+    const parentWidth = workspaceCardRef.current?.parentElement?.getBoundingClientRect().width || window.innerWidth;
+
     if (cardHeight === null) {
       setCardHeight(Math.round(startHeight));
     }
+    if (isAspectRatioLockedRef.current && cardWidth === null) {
+      setCardWidth(Math.round(startWidth));
+    }
 
+    let lastClientX = e.clientX;
     let lastClientY = e.clientY;
     const initialAlt = Boolean(e.altKey);
     setIsAltSnapToggled(initialAlt);
 
-    // Dynamic height calculation that supports keyboard shortcut (e.g. 'Alt' + drag) to temporarily invert Snap to Grid
-    const updateHeight = (clientY: number, altPressed: boolean) => {
+    // Dynamic dimension calculation that supports aspect ratio constraints & keyboard snap toggle
+    const updateDimensions = (clientX: number, clientY: number, altPressed: boolean) => {
+      lastClientX = clientX;
       lastClientY = clientY;
       setIsAltSnapToggled(altPressed);
 
       // Invert snap-to-grid behavior while 'Alt' is held (precision vs free-form)
       const effectiveSnap = altPressed ? !snapToGridRef.current : snapToGridRef.current;
+      const deltaX = clientX - startX;
       const deltaY = clientY - startY;
-      let calculatedHeight = startHeight + deltaY;
-      if (effectiveSnap) {
-        const interval = snapGridIntervalRef.current || 50;
-        calculatedHeight = Math.round(calculatedHeight / interval) * interval;
+
+      if (isAspectRatioLockedRef.current) {
+        const targetPreset = ASPECT_RATIO_PRESETS.find(p => p.id === aspectRatioValueRef.current) || ASPECT_RATIO_PRESETS[0];
+        const ratio = targetPreset.ratio; // e.g. 16/9
+
+        // Calculate proportional diagonal scaling delta
+        const delta = Math.abs(deltaY) > Math.abs(deltaX / ratio) ? deltaY : (deltaX / ratio);
+        let calculatedHeight = startHeight + delta;
+        if (effectiveSnap) {
+          const interval = snapGridIntervalRef.current || 50;
+          calculatedHeight = Math.round(calculatedHeight / interval) * interval;
+        }
+
+        let newH = Math.max(minHeightRef.current, Math.min(maxHeightRef.current, calculatedHeight));
+        let newW = Math.round(newH * ratio);
+
+        // Constrain to parent container width so it doesn't overflow viewport
+        if (newW > parentWidth) {
+          newW = Math.round(parentWidth);
+          newH = Math.round(newW / ratio);
+        }
+        if (newH < minHeightRef.current) {
+          newH = minHeightRef.current;
+          newW = Math.round(newH * ratio);
+        }
+
+        setCardHeight(Math.round(newH));
+        setCardWidth(Math.round(newW));
+      } else {
+        let calculatedHeight = startHeight + deltaY;
+        if (effectiveSnap) {
+          const interval = snapGridIntervalRef.current || 50;
+          calculatedHeight = Math.round(calculatedHeight / interval) * interval;
+        }
+        const newHeight = Math.max(minHeightRef.current, Math.min(maxHeightRef.current, calculatedHeight));
+        setCardHeight(newHeight);
       }
-      const newHeight = Math.max(minHeightRef.current, Math.min(maxHeightRef.current, calculatedHeight));
-      setCardHeight(newHeight);
     };
 
     if (initialAlt) {
-      updateHeight(startY, true);
+      updateDimensions(startX, startY, true);
     }
 
     const handleMouseMove = (moveEvent: MouseEvent) => {
-      updateHeight(moveEvent.clientY, Boolean(moveEvent.altKey));
+      updateDimensions(moveEvent.clientX, moveEvent.clientY, Boolean(moveEvent.altKey));
     };
 
     const handleKeyDown = (keyEvent: KeyboardEvent) => {
       if (keyEvent.key === 'Alt') {
         keyEvent.preventDefault();
-        updateHeight(lastClientY, true);
+        updateDimensions(lastClientX, lastClientY, true);
       }
     };
 
     const handleKeyUp = (keyEvent: KeyboardEvent) => {
       if (keyEvent.key === 'Alt') {
-        updateHeight(lastClientY, false);
+        updateDimensions(lastClientX, lastClientY, false);
       }
     };
 
@@ -826,6 +961,9 @@ function MainAppContent() {
       card.style.transition = '';
       card.style.height = '';
       setCardHeight(null);
+      setCardWidth(null);
+      setIsAspectRatioLocked(false);
+      isAspectRatioLockedRef.current = false;
       setIsResettingHeight(false);
     };
 
@@ -837,6 +975,9 @@ function MainAppContent() {
       card.style.transition = '';
       card.style.height = '';
       setCardHeight(null);
+      setCardWidth(null);
+      setIsAspectRatioLocked(false);
+      isAspectRatioLockedRef.current = false;
       setIsResettingHeight(false);
     }, 450);
 
@@ -1148,11 +1289,15 @@ function MainAppContent() {
       <main className="flex-1 p-4 md:p-6 lg:p-8 overflow-y-auto max-w-7xl mx-auto space-y-6 relative">
         
         {/* Workspace Card Container - Styled with High-Fidelity Glassmorphism & Subtle 3D Lift on Hover */}
-        <div 
+        <motion.div 
           ref={workspaceCardRef}
           id="workspace-card" 
+          initial={{ opacity: 0, y: 16, scale: 0.995 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          transition={{ duration: 0.45, ease: [0.16, 1, 0.3, 1] }}
           style={{
             ...(cardHeight ? { height: `${cardHeight}px` } : {}),
+            ...(isAspectRatioLocked && cardWidth ? { width: `${cardWidth}px`, maxWidth: '100%', marginLeft: 'auto', marginRight: 'auto' } : {}),
           }}
           onContextMenu={(e) => {
             e.preventDefault();
@@ -1393,7 +1538,8 @@ function MainAppContent() {
                 )}
                 <span className="text-slate-400 font-medium">Auto-height:</span>
                 <span className="font-bold text-amber-300">
-                  Manual ({Math.round(cardHeight)}px)
+                  Manual ({cardWidth && isAspectRatioLocked ? `${Math.round(cardWidth)} × ` : ''}${Math.round(cardHeight)}px)
+                  {isAspectRatioLocked ? ` [${aspectRatioValue} Ratio]` : ''}
                   {isWorkspaceHeightLocked ? ' [Locked]' : ''}
                   {isSnapToGrid ? ` [Grid: ${snapGridInterval}px]` : ''}
                   {minHeightConstraint !== DEFAULT_MIN_HEIGHT || maxHeightConstraint !== DEFAULT_MAX_HEIGHT
@@ -1446,9 +1592,15 @@ function MainAppContent() {
                 <div className="flex items-center gap-2 flex-wrap">
                   <h2 className="text-sm font-sans font-black tracking-wider text-white uppercase flex items-center gap-1.5">
                     Workspace
-                    <span className="text-[10px] bg-red-600/10 border border-red-650/20 text-red-400 px-2 py-0.5 rounded-full font-mono uppercase font-bold">
+                    <motion.span 
+                      key={activeTab}
+                      initial={{ opacity: 0, scale: 0.88, y: -2 }}
+                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="text-[10px] bg-red-600/10 border border-red-650/20 text-red-400 px-2 py-0.5 rounded-full font-mono uppercase font-bold inline-block"
+                    >
                       {activeTab}
-                    </span>
+                    </motion.span>
                   </h2>
 
                   {/* GitHub Synchronization Status Indicator Badge with small green/orange/red icon */}
@@ -1702,8 +1854,46 @@ function MainAppContent() {
               </div>
             </div>
 
-            {/* Right side actions (Auto-refresh toggle & Empty state toggle) */}
+            {/* Right side actions (Google Drive Connector, Download Workspace Snapshot, Layout toggle, Auto-refresh toggle & Empty state toggle) */}
             <div className="flex items-center gap-2 flex-wrap">
+              {/* Google Drive Connector Module */}
+              <GoogleDriveConnector
+                onLinkAsset={handleAddAsset}
+                linkedAssets={assets}
+                triggerToast={triggerToast}
+              />
+
+              {/* Gmail News Desk Quick Trigger */}
+              <button
+                id="workspace-gmail-trigger-btn"
+                type="button"
+                onClick={() => {
+                  setActiveTab('gmail');
+                  triggerToast('Switched to Gmail News Desk');
+                }}
+                title="Open Gmail News Desk to read press releases and dispatch studio emails"
+                className="flex items-center gap-1.5 text-xs font-mono font-bold px-3 py-1.5 rounded-lg border bg-slate-900 hover:bg-slate-850 border-red-500/40 hover:border-red-400 text-red-300 hover:text-white transition-all shadow-sm hover:shadow-red-950/40 cursor-pointer"
+              >
+                <Mail className="w-3.5 h-3.5 text-red-400" />
+                <span>Gmail News Desk</span>
+              </button>
+
+              {/* Expo Go Mobile Companion Quick Trigger */}
+              <button
+                id="workspace-expo-trigger-btn"
+                type="button"
+                onClick={() => {
+                  setShowExpoModal(true);
+                  triggerToast('Opened Expo Mobile Companion (@aigaming)');
+                }}
+                title="Scan QR Code or Launch Mobile Companion (exp://exp.host/@aigaming/gnn-ai-studio)"
+                className="flex items-center gap-1.5 text-xs font-mono font-bold px-3 py-1.5 rounded-lg border bg-slate-900 hover:bg-slate-850 border-indigo-500/40 hover:border-indigo-400 text-indigo-300 hover:text-white transition-all shadow-sm hover:shadow-indigo-950/40 cursor-pointer"
+              >
+                <Smartphone className="w-3.5 h-3.5 text-indigo-400" />
+                <span>Mobile App (Expo Go)</span>
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+              </button>
+
               {/* Download Workspace Snapshot */}
               <button
                 id="download-workspace-snapshot-btn"
@@ -2320,104 +2510,142 @@ function MainAppContent() {
             </div>
           )}
 
-          {/* Active Workspace View / Empty state fallback */}
-          {isEmptyStateActive ? (
-            <EmptyState 
-              onPopulateDemo={handlePopulateDemo} 
-              onOpenQuickScript={() => setShowNewScriptModal(true)} 
-              onOpenQuickAsset={() => setShowNewAssetModal(true)} 
-            />
-          ) : (
-            <>
-              {activeTab === 'dashboard' && (
-                <AnalyticsDashboard 
-                  scripts={filteredScripts} 
-                  posts={filteredPosts} 
+          {/* Active Workspace View / Empty state fallback with Framer Motion internal component transitions */}
+          <AnimatePresence mode="wait">
+            {isEmptyStateActive ? (
+              <motion.div
+                key="empty-workspace-deck"
+                initial={{ opacity: 0, y: 8, filter: 'blur(3px)' }}
+                animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                exit={{ opacity: 0, y: -6, filter: 'blur(2px)' }}
+                transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                className="w-full"
+              >
+                <EmptyState 
+                  onPopulateDemo={handlePopulateDemo} 
+                  onOpenQuickScript={() => setShowNewScriptModal(true)} 
+                  onOpenQuickAsset={() => setShowNewAssetModal(true)} 
                 />
-              )}
-              {activeTab === 'gnn_os' && (
-                <GnnControlPlane 
-                  userRole={userRole}
-                  setUserRole={setUserRole}
-                  onNavigateTab={(tab) => setActiveTab(tab)}
-                />
-              )}
-              {activeTab === 'aibrain' && (
-                <AiBrainStudio />
-              )}
-              {activeTab === 'approvals' && (
-                <ScriptApprovalHub
-                  userRole={userRole}
-                  scripts={filteredScripts}
-                  setScripts={setScripts}
-                  onAddAsset={handleAddAsset}
-                  onNavigateTab={(tab) => setActiveTab(tab)}
-                  triggerToast={triggerToast}
-                />
-              )}
-              {activeTab === 'news' && (
-                <NewsEditor 
-                  userRole={userRole} 
-                  onAddScript={handleAddScript} 
-                  onAddAsset={handleAddAsset} 
-                  onAddMessage={handleAddMessage} 
-                />
-              )}
-              {activeTab === 'studio' && (
-                <StudioDirector 
-                  userRole={userRole} 
-                  onAddAsset={handleAddAsset} 
-                />
-              )}
-              {activeTab === 'fastmcp_vmix' && (
-                <FastMcpVmixStudio
-                  userRole={userRole}
-                  scripts={scripts}
-                  assets={assets}
-                  onAddAsset={handleAddAsset}
-                  triggerToast={triggerToast}
-                />
-              )}
-              {activeTab === 'audio' && (
-                <AudioTools 
-                  userRole={userRole} 
-                  onAddAsset={handleAddAsset} 
-                />
-              )}
-              {activeTab === 'manual_edit' && (
-                <ManualEditPanel 
-                  userRole={userRole} 
-                  onAddAsset={handleAddAsset} 
-                />
-              )}
-              {activeTab === 'repository' && (
-                <AssetRepository 
-                  userRole={userRole} 
-                  assets={filteredAssets} 
-                  setAssets={setAssets} 
-                  viewMode={workspaceViewMode}
-                  triggerToast={triggerToast}
-                />
-              )}
-              {activeTab === 'scheduler' && (
-                <SocialScheduler 
-                  userRole={userRole} 
-                  scripts={filteredScripts} 
-                  posts={filteredPosts} 
-                  setPosts={setPosts} 
-                  assets={assets}
-                  triggerToast={triggerToast}
-                />
-              )}
-              {activeTab === 'chat' && (
-                <ChatAssistant 
-                  userRole={userRole} 
-                  messages={messages} 
-                  setMessages={setMessages} 
-                />
-              )}
-            </>
-          )}
+              </motion.div>
+            ) : (
+              <motion.div
+                key={activeTab}
+                initial={{ opacity: 0, y: 8, filter: 'blur(3px)' }}
+                animate={{ opacity: 1, y: 0, filter: 'blur(0px)' }}
+                exit={{ opacity: 0, y: -6, filter: 'blur(2px)' }}
+                transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+                className="w-full"
+              >
+                {activeTab === 'dashboard' && (
+                  <AnalyticsDashboard 
+                    scripts={filteredScripts} 
+                    posts={filteredPosts} 
+                  />
+                )}
+                {activeTab === 'gnn_os' && (
+                  <GnnControlPlane 
+                    userRole={userRole}
+                    setUserRole={setUserRole}
+                    onNavigateTab={(tab) => setActiveTab(tab)}
+                  />
+                )}
+                {activeTab === 'aibrain' && (
+                  <AiBrainStudio />
+                )}
+                {activeTab === 'approvals' && (
+                  <ScriptApprovalHub
+                    userRole={userRole}
+                    scripts={filteredScripts}
+                    setScripts={setScripts}
+                    onAddAsset={handleAddAsset}
+                    onNavigateTab={(tab) => setActiveTab(tab)}
+                    triggerToast={triggerToast}
+                  />
+                )}
+                {activeTab === 'news' && (
+                  <NewsEditor 
+                    userRole={userRole} 
+                    onAddScript={handleAddScript} 
+                    onAddAsset={handleAddAsset} 
+                    onAddMessage={handleAddMessage} 
+                  />
+                )}
+                {activeTab === 'gmail' && (
+                  <GmailNewsDesk
+                    userRole={userRole}
+                    onAddScript={handleAddScript}
+                    onAddAsset={handleAddAsset}
+                    triggerToast={triggerToast}
+                    onNavigateToNews={() => {
+                      setActiveTab('news');
+                    }}
+                  />
+                )}
+                {activeTab === 'studio' && (
+                  <StudioDirector 
+                    userRole={userRole} 
+                    onAddAsset={handleAddAsset} 
+                  />
+                )}
+                {activeTab === 'fastmcp_vmix' && (
+                  <FastMcpVmixStudio
+                    userRole={userRole}
+                    scripts={scripts}
+                    assets={assets}
+                    onAddAsset={handleAddAsset}
+                    triggerToast={triggerToast}
+                  />
+                )}
+                {activeTab === 'mobile_companion' && (
+                  <ExpoMobileCompanion
+                    scripts={scripts}
+                    onAddAsset={handleAddAsset}
+                    triggerToast={triggerToast}
+                    onNavigateTab={(tab) => setActiveTab(tab)}
+                    initialUrl="exp://exp.host/@aigaming/gnn-ai-studio"
+                  />
+                )}
+                {activeTab === 'audio' && (
+                  <AudioTools 
+                    userRole={userRole} 
+                    onAddAsset={handleAddAsset} 
+                  />
+                )}
+                {activeTab === 'manual_edit' && (
+                  <ManualEditPanel 
+                    userRole={userRole} 
+                    onAddAsset={handleAddAsset} 
+                  />
+                )}
+                {activeTab === 'repository' && (
+                  <AssetRepository 
+                    userRole={userRole} 
+                    assets={filteredAssets} 
+                    setAssets={setAssets} 
+                    viewMode={workspaceViewMode}
+                    triggerToast={triggerToast}
+                  />
+                )}
+                {activeTab === 'scheduler' && (
+                  <SocialScheduler 
+                    userRole={userRole} 
+                    scripts={filteredScripts} 
+                    posts={filteredPosts} 
+                    setPosts={setPosts} 
+                    assets={assets}
+                    triggerToast={triggerToast}
+                  />
+                )}
+                {activeTab === 'chat' && (
+                  <ChatAssistant 
+                    userRole={userRole} 
+                    messages={messages} 
+                    setMessages={setMessages} 
+                  />
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* Expandable GNN AI Brain Real-Time Agent Telemetry Log Viewer Panel */}
           <GnnBrainLogViewer defaultExpanded={false} />
@@ -2648,6 +2876,31 @@ function MainAppContent() {
             </div>
           </div>
 
+          {/* Aspect Ratio Lock Option in Context Menu */}
+          <div className="pt-1 border-t border-slate-800/80">
+            <button
+              id="context-menu-aspect-ratio-btn"
+              type="button"
+              onClick={() => {
+                setContextMenu(prev => ({ ...prev, visible: false }));
+                toggleAspectRatioLock();
+              }}
+              className="w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-slate-300 hover:text-white hover:bg-slate-800/80 transition-colors cursor-pointer text-left group"
+            >
+              <span className="flex items-center gap-2">
+                <Proportions className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Aspect Ratio Lock ({aspectRatioValue})</span>
+              </span>
+              <span className={`text-[10px] font-mono px-1.5 py-0.5 rounded ${
+                isAspectRatioLocked
+                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+                  : 'text-slate-500 bg-slate-800/60'
+              }`}>
+                {isAspectRatioLocked ? 'LOCKED' : 'FREE'}
+              </span>
+            </button>
+          </div>
+
           {/* Height Constraints Configuration Option in Context Menu */}
           <div className="pt-1 border-t border-slate-800/80">
             <button
@@ -2745,19 +2998,32 @@ function MainAppContent() {
             className="absolute bottom-full mb-2 right-0 z-50 pointer-events-none flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-950/98 border border-cyan-500/50 shadow-2xl backdrop-blur-md text-xs font-mono animate-in fade-in zoom-in-95 duration-75 whitespace-nowrap"
           >
             <div className="flex items-center gap-1.5 text-cyan-300 font-bold">
-              {isSnapToGrid ? (
+              {isAspectRatioLocked ? (
+                <Proportions className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
+              ) : isSnapToGrid ? (
                 <LayoutGrid className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
               ) : (
                 <MoveVertical className="w-3.5 h-3.5 text-slate-400" />
               )}
-              <span>{Math.round(cardHeight || 600)}px</span>
+              <span>
+                {isAspectRatioLocked && cardWidth
+                  ? `${Math.round(cardWidth)} × ${Math.round(cardHeight || 600)}px`
+                  : `${Math.round(cardHeight || 600)}px`}
+              </span>
             </div>
-            {isSnapToGrid ? (
+            {isAspectRatioLocked && (
+              <span className="text-[10px] text-emerald-300 bg-emerald-500/15 border border-emerald-500/40 px-2 py-0.5 rounded-full font-semibold flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping" />
+                Ratio: {aspectRatioValue}
+              </span>
+            )}
+            {isSnapToGrid && !isAspectRatioLocked && (
               <span className="text-[10px] text-cyan-300 bg-cyan-500/15 border border-cyan-500/40 px-2 py-0.5 rounded-full font-semibold flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping" />
                 Grid: {snapGridInterval}px
               </span>
-            ) : (
+            )}
+            {!isSnapToGrid && !isAspectRatioLocked && (
               <span className="text-[10px] text-slate-400 bg-slate-900 border border-slate-800 px-1.5 py-0.5 rounded">
                 Freeform
               </span>
@@ -2892,15 +3158,131 @@ function MainAppContent() {
           <span>{minHeightConstraint}–{maxHeightConstraint}px</span>
         </button>
 
+        {/* Aspect Ratio Lock Button in #workspace-card-resize-handle Area */}
+        <div className="relative flex items-center">
+          <button
+            id="workspace-aspect-ratio-lock-btn"
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleAspectRatioLock();
+            }}
+            title={
+              isAspectRatioLocked
+                ? `Aspect Ratio is locked to ${aspectRatioValue} (Constrained Width & Height for media player consistency) • Click to unlock • Click arrow to choose preset (16:9, 4:3, 21:9, 1:1, 9:16)`
+                : `Lock Workspace to fixed Aspect Ratio (${aspectRatioValue}, e.g. 16:9 widescreen) for media player layout consistency`
+            }
+            className={`flex items-center gap-1.5 px-2 py-1 rounded-l-lg text-[10px] font-mono font-bold transition-all cursor-pointer select-none ${
+              isAspectRatioLocked
+                ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/50 shadow-xs hover:bg-emerald-500/30 ring-1 ring-emerald-500/30'
+                : 'bg-slate-900/90 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-750'
+            }`}
+          >
+            <Proportions className={`w-3 h-3 shrink-0 ${isAspectRatioLocked ? 'text-emerald-400' : 'text-slate-400'}`} />
+            <span>{isAspectRatioLocked ? `Ratio: ${aspectRatioValue}` : `${aspectRatioValue} Lock`}</span>
+          </button>
+
+          {/* Aspect Ratio Presets Selector Toggle */}
+          <button
+            id="workspace-aspect-ratio-menu-btn"
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setShowAspectRatioMenu(prev => !prev);
+            }}
+            title="Choose aspect ratio preset (16:9 Broadcast, 4:3 Classic, 21:9 Ultrawide, 1:1 Square, 9:16 Vertical)"
+            className={`h-full px-1.5 py-1 rounded-r-lg border-y border-r text-[9px] font-mono transition-colors cursor-pointer select-none flex items-center ${
+              isAspectRatioLocked
+                ? 'bg-emerald-500/30 text-emerald-200 border-emerald-500/50 hover:bg-emerald-500/40'
+                : 'bg-slate-850 text-slate-400 border-slate-750 hover:text-white hover:bg-slate-800'
+            }`}
+          >
+            <ChevronUp className={`w-2.5 h-2.5 transition-transform ${showAspectRatioMenu ? 'rotate-180' : ''}`} />
+          </button>
+
+          {/* Aspect Ratio Presets Menu Popover */}
+          {showAspectRatioMenu && (
+            <div 
+              id="workspace-aspect-ratio-menu"
+              onClick={(e) => e.stopPropagation()}
+              className="absolute bottom-full mb-2 right-0 z-50 w-64 bg-slate-950/98 border border-slate-800 rounded-xl shadow-2xl p-2.5 space-y-1.5 backdrop-blur-xl animate-in fade-in zoom-in-95"
+            >
+              <div className="flex items-center justify-between border-b border-slate-850 pb-1.5 px-1">
+                <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-300 flex items-center gap-1.5">
+                  <Proportions className="w-3.5 h-3.5 text-emerald-400" />
+                  Media Aspect Ratios
+                </span>
+                <span className="text-[9px] font-mono text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">
+                  {isAspectRatioLocked ? 'Active' : 'Unlocked'}
+                </span>
+              </div>
+
+              <div className="space-y-1 pt-0.5">
+                {ASPECT_RATIO_PRESETS.map((preset) => {
+                  const isSelected = aspectRatioValue === preset.id;
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => {
+                        toggleAspectRatioLock(preset.id);
+                        setShowAspectRatioMenu(false);
+                      }}
+                      className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-left text-xs transition-colors cursor-pointer ${
+                        isSelected && isAspectRatioLocked
+                          ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 font-bold'
+                          : isSelected
+                          ? 'bg-slate-800 text-white font-semibold'
+                          : 'text-slate-400 hover:text-white hover:bg-slate-900'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm">{preset.icon}</span>
+                        <div>
+                          <div className="font-mono text-xs">{preset.label}</div>
+                          <div className="text-[9px] text-slate-500 font-sans line-clamp-1">{preset.desc}</div>
+                        </div>
+                      </div>
+                      {isSelected && isAspectRatioLocked && (
+                        <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="pt-1.5 border-t border-slate-850 flex justify-between items-center text-[9px] font-mono text-slate-400 px-1">
+                <span>Media consistency</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsAspectRatioLocked(false);
+                    isAspectRatioLockedRef.current = false;
+                    setCardWidth(null);
+                    setShowAspectRatioMenu(false);
+                    triggerToast('Aspect Ratio Lock disabled.');
+                  }}
+                  className="text-red-400 hover:text-red-300 cursor-pointer"
+                >
+                  Clear Lock
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Draggable Resize Handle in Bottom-Right Corner of #workspace-card */}
         <div
           id="workspace-card-resize-handle"
           data-alt-snap={isAltSnapToggled ? 'true' : 'false'}
+          data-aspect-ratio-locked={isAspectRatioLocked ? 'true' : 'false'}
           onMouseDown={isWorkspaceHeightLocked ? undefined : handleResizeMouseDown}
           onDoubleClick={isWorkspaceHeightLocked ? () => triggerToast('Workspace height is locked. Unlock to reset or resize.') : handleResetCardHeight}
           title={
             isWorkspaceHeightLocked
               ? 'Workspace height is locked. Resizing is disabled to prevent accidental layout shifts.'
+              : isAspectRatioLocked
+              ? `Drag to resize card with locked ${aspectRatioValue} aspect ratio (${Math.round(cardWidth || 960)} × ${Math.round(cardHeight || 540)}px • Bounds: ${minHeightConstraint}px - ${maxHeightConstraint}px) • Double-click to reset`
               : cardHeight
               ? `Drag to resize card height (Current: ${Math.round(cardHeight)}px${isEffectiveSnapActive ? ` • Snapped to ${activeGridInterval}px grid` : ' • Free-form'} • Bounds: ${minHeightConstraint}px - ${maxHeightConstraint}px) • Hold 'Alt' + drag to temporarily toggle snap mode • Double-click to reset to default auto-fit`
               : `Drag to dynamically resize workspace height${isEffectiveSnapActive ? ` (${activeGridInterval}px grid)` : ' (free-form)'} • Hold 'Alt' + drag to toggle snap (Bounds: ${minHeightConstraint}px - ${maxHeightConstraint}px) • Double-click to reset`
@@ -2909,9 +3291,13 @@ function MainAppContent() {
             isWorkspaceHeightLocked
               ? 'cursor-not-allowed opacity-35 text-slate-600 bg-slate-900/30'
               : isResizingCard
-              ? isAltSnapToggled
+              ? isAspectRatioLocked
+                ? 'cursor-se-resize bg-emerald-500 text-slate-950 ring-2 ring-emerald-400 shadow-lg scale-110'
+                : isAltSnapToggled
                 ? 'cursor-se-resize bg-amber-500 text-slate-950 ring-2 ring-amber-400 shadow-lg scale-110'
                 : 'cursor-se-resize bg-red-500 text-white ring-2 ring-red-400 shadow-lg scale-110'
+              : isAspectRatioLocked
+              ? 'cursor-se-resize bg-slate-900/90 hover:bg-slate-800 text-emerald-400 hover:text-emerald-300 border border-emerald-500/50 shadow-md hover:scale-105'
               : 'cursor-se-resize bg-slate-900/90 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-700/80 shadow-md hover:scale-105'
           }`}
         >
@@ -2929,149 +3315,231 @@ function MainAppContent() {
         </div>
       </div>
 
-    </div>
+    </motion.div>
 
   </main>
 
       {/* Instant New Script Overlay Modal */}
-      {showNewScriptModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
-          <div className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
-            <div className="flex justify-between items-center border-b border-slate-800 pb-2">
-              <h3 className="text-sm font-sans font-black tracking-widest uppercase text-white flex items-center gap-2">
-                <FileText className="w-4 h-4 text-red-500 animate-pulse" /> Instant GNN News Script
-              </h3>
-              <button 
-                onClick={() => setShowNewScriptModal(false)}
-                className="text-slate-400 hover:text-white text-xs font-mono cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-[10px] font-mono text-slate-500 uppercase mb-1">Script Title / Headline</label>
-                <input 
-                  type="text"
-                  placeholder="e.g. Fusion Reactor Breakthrough stable trail"
-                  value={quickScriptTitle}
-                  onChange={(e) => setQuickScriptTitle(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-850 rounded-lg p-2.5 text-xs text-slate-200 outline-none focus:border-red-500 font-mono"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-mono text-slate-500 uppercase mb-1">Body Text Content (Bengali / English)</label>
-                <textarea 
-                  rows={4}
-                  placeholder="এআই নিউজ স্টুডিওর মেইন বডি টেক্সট এখানে প্রদান করুন..."
-                  value={quickScriptBody}
-                  onChange={(e) => setQuickScriptBody(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-850 rounded-lg p-2.5 text-xs text-slate-200 outline-none focus:border-red-500 font-mono resize-none"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-mono text-slate-500 uppercase mb-1">Language</label>
-                <select 
-                  value={quickScriptLang}
-                  onChange={(e) => setQuickScriptLang(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-850 rounded-lg p-2 text-xs text-slate-300 outline-none cursor-pointer"
+      <AnimatePresence>
+        {showNewScriptModal && (
+          <motion.div
+            key="instant-new-script-modal-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setShowNewScriptModal(false);
+            }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4"
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.94, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.94, y: 16 }}
+              transition={{ type: "spring", duration: 0.28, bounce: 0.12 }}
+              className="w-full max-w-lg bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4"
+            >
+              <div className="flex justify-between items-center border-b border-slate-800 pb-2">
+                <h3 className="text-sm font-sans font-black tracking-widest uppercase text-white flex items-center gap-2">
+                  <FileText className="w-4 h-4 text-red-500 animate-pulse" /> Instant GNN News Script
+                </h3>
+                <button 
+                  onClick={() => setShowNewScriptModal(false)}
+                  className="text-slate-400 hover:text-white text-xs font-mono cursor-pointer"
                 >
-                  <option value="Bangla">Bangla (বাংলা)</option>
-                  <option value="English">English</option>
-                  <option value="Hindi">Hindi</option>
-                </select>
+                  ✕
+                </button>
               </div>
-            </div>
 
-            <div className="flex gap-2.5 pt-2">
-              <button 
-                onClick={() => setShowNewScriptModal(false)}
-                className="flex-1 bg-slate-800 hover:bg-slate-750 text-slate-200 py-2 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button 
-                onClick={handleCreateQuickScript}
-                className="flex-1 bg-red-650 hover:bg-red-700 text-white py-2 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer"
-              >
-                Inject Script
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-[10px] font-mono text-slate-500 uppercase mb-1">Script Title / Headline</label>
+                  <input 
+                    type="text"
+                    placeholder="e.g. Fusion Reactor Breakthrough stable trail"
+                    value={quickScriptTitle}
+                    onChange={(e) => setQuickScriptTitle(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-850 rounded-lg p-2.5 text-xs text-slate-200 outline-none focus:border-red-500 font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-mono text-slate-500 uppercase mb-1">Body Text Content (Bengali / English)</label>
+                  <textarea 
+                    rows={4}
+                    placeholder="এআই নিউজ স্টুডিওর মেইন বডি টেক্সট এখানে প্রদান করুন..."
+                    value={quickScriptBody}
+                    onChange={(e) => setQuickScriptBody(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-850 rounded-lg p-2.5 text-xs text-slate-200 outline-none focus:border-red-500 font-mono resize-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-mono text-slate-500 uppercase mb-1">Language</label>
+                  <select 
+                    value={quickScriptLang}
+                    onChange={(e) => setQuickScriptLang(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-850 rounded-lg p-2 text-xs text-slate-300 outline-none cursor-pointer"
+                  >
+                    <option value="Bangla">Bangla (বাংলা)</option>
+                    <option value="English">English</option>
+                    <option value="Hindi">Hindi</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex gap-2.5 pt-2">
+                <button 
+                  onClick={() => setShowNewScriptModal(false)}
+                  className="flex-1 bg-slate-800 hover:bg-slate-750 text-slate-200 py-2 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={handleCreateQuickScript}
+                  className="flex-1 bg-red-650 hover:bg-red-700 text-white py-2 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer"
+                >
+                  Inject Script
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Instant New Asset Overlay Modal */}
-      {showNewAssetModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4">
-            <div className="flex justify-between items-center border-b border-slate-800 pb-2">
-              <h3 className="text-sm font-sans font-black tracking-widest uppercase text-white flex items-center gap-2">
-                <PlusCircle className="w-4 h-4 text-red-500 animate-pulse" /> Add Instant Media Asset
-              </h3>
-              <button 
-                onClick={() => setShowNewAssetModal(false)}
-                className="text-slate-400 hover:text-white text-xs font-mono cursor-pointer"
-              >
-                ✕
-              </button>
-            </div>
-
-            <div className="space-y-4">
-              <div>
-                <label className="block text-[10px] font-mono text-slate-500 uppercase mb-1">Asset Name</label>
-                <input 
-                  type="text"
-                  placeholder="e.g. Bangladesh Anchor Chroma backdrop"
-                  value={quickAssetName}
-                  onChange={(e) => setQuickAssetName(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-850 rounded-lg p-2.5 text-xs text-slate-200 outline-none focus:border-red-500 font-mono"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10px] font-mono text-slate-500 uppercase mb-1">Asset Category</label>
-                <select 
-                  value={quickAssetType}
-                  onChange={(e: any) => setQuickAssetType(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-850 rounded-lg p-2 text-xs text-slate-300 outline-none cursor-pointer"
+      <AnimatePresence>
+        {showNewAssetModal && (
+          <motion.div
+            key="instant-new-asset-modal-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setShowNewAssetModal(false);
+            }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/80 backdrop-blur-sm p-4"
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.94, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.94, y: 16 }}
+              transition={{ type: "spring", duration: 0.28, bounce: 0.12 }}
+              className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl space-y-4"
+            >
+              <div className="flex justify-between items-center border-b border-slate-800 pb-2">
+                <h3 className="text-sm font-sans font-black tracking-widest uppercase text-white flex items-center gap-2">
+                  <PlusCircle className="w-4 h-4 text-red-500 animate-pulse" /> Add Instant Media Asset
+                </h3>
+                <button 
+                  onClick={() => setShowNewAssetModal(false)}
+                  className="text-slate-400 hover:text-white text-xs font-mono cursor-pointer"
                 >
-                  <option value="video">🎥 News Studio Video clip</option>
-                  <option value="image">🖼️ Backdrop High-Res image</option>
-                  <option value="audio">🎵 Vocal voice-over track</option>
-                  <option value="subtitles">📝 SRT Subtitles lyrics</option>
-                </select>
+                  ✕
+                </button>
               </div>
-            </div>
 
-            <div className="flex gap-2.5 pt-2">
-              <button 
-                onClick={() => setShowNewAssetModal(false)}
-                className="flex-1 bg-slate-800 hover:bg-slate-750 text-slate-200 py-2 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer"
-              >
-                Cancel
-              </button>
-              <button 
-                onClick={handleCreateQuickAsset}
-                className="flex-1 bg-red-650 hover:bg-red-700 text-white py-2 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer"
-              >
-                Add to Repository
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-[10px] font-mono text-slate-500 uppercase mb-1">Asset Name</label>
+                  <input 
+                    type="text"
+                    placeholder="e.g. Bangladesh Anchor Chroma backdrop"
+                    value={quickAssetName}
+                    onChange={(e) => setQuickAssetName(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-850 rounded-lg p-2.5 text-xs text-slate-200 outline-none focus:border-red-500 font-mono"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] font-mono text-slate-500 uppercase mb-1">Asset Category</label>
+                  <select 
+                    value={quickAssetType}
+                    onChange={(e: any) => setQuickAssetType(e.target.value)}
+                    className="w-full bg-slate-950 border border-slate-850 rounded-lg p-2 text-xs text-slate-300 outline-none cursor-pointer"
+                  >
+                    <option value="video">🎥 News Studio Video clip</option>
+                    <option value="image">🖼️ Backdrop High-Res image</option>
+                    <option value="audio">🎵 Vocal voice-over track</option>
+                    <option value="subtitles">📝 SRT Subtitles lyrics</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="flex gap-2.5 pt-2">
+                <button 
+                  onClick={() => setShowNewAssetModal(false)}
+                  className="flex-1 bg-slate-800 hover:bg-slate-750 text-slate-200 py-2 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={handleCreateQuickAsset}
+                  className="flex-1 bg-red-650 hover:bg-red-700 text-white py-2 rounded-lg text-xs font-mono font-bold transition-all cursor-pointer"
+                >
+                  Add to Repository
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Expo Mobile Companion Overlay Modal */}
+      <AnimatePresence>
+        {showExpoModal && (
+          <motion.div
+            key="expo-mobile-companion-modal-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setShowExpoModal(false);
+            }}
+            className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/85 backdrop-blur-md p-4 overflow-y-auto"
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 16 }}
+              transition={{ type: 'spring', duration: 0.28, bounce: 0.1 }}
+              className="w-full max-w-4xl bg-slate-900 border border-indigo-500/30 rounded-3xl p-6 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto"
+            >
+              <ExpoMobileCompanion
+                scripts={scripts}
+                onAddAsset={handleAddAsset}
+                triggerToast={triggerToast}
+                onNavigateTab={(tab) => {
+                  setShowExpoModal(false);
+                  setActiveTab(tab);
+                }}
+                initialUrl="exp://exp.host/@aigaming/gnn-ai-studio"
+                isModalView={true}
+                onCloseModal={() => setShowExpoModal(false)}
+              />
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Styled success toast notification */}
-      {toastMessage && (
-        <div className="fixed bottom-6 left-6 z-50 bg-slate-950 border border-emerald-500/40 px-4 py-3 rounded-xl shadow-2xl flex items-center gap-2.5 animate-fade-in">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-          <span className="text-xs font-mono text-slate-200">{toastMessage}</span>
-        </div>
-      )}
+      <AnimatePresence>
+        {toastMessage && (
+          <motion.div
+            key="toast-notification"
+            initial={{ opacity: 0, y: 15, scale: 0.95 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 15, scale: 0.95 }}
+            transition={{ duration: 0.2 }}
+            className="fixed bottom-6 left-6 z-50 bg-slate-950 border border-emerald-500/40 px-4 py-3 rounded-xl shadow-2xl flex items-center gap-2.5"
+          >
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
+            <span className="text-xs font-mono text-slate-200">{toastMessage}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
     </div>
   );

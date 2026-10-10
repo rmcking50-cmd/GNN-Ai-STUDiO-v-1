@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   CheckCircle2, 
   XCircle, 
@@ -399,9 +400,17 @@ export default function ScriptApprovalHub({
         </div>
       </div>
 
-      {/* Main Grid: Scripts List */}
-      <div className="space-y-4">
-        {filteredScripts.length === 0 ? (
+      {/* Main Grid: Scripts List with Framer Motion filter transitions */}
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={activeFilter}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -6 }}
+          transition={{ duration: 0.18, ease: "easeOut" }}
+          className="space-y-4"
+        >
+          {filteredScripts.length === 0 ? (
           <div className="bg-slate-950 border border-dashed border-slate-850 rounded-2xl p-12 text-center space-y-3">
             <AlertCircle className="w-8 h-8 mx-auto text-slate-600" />
             <h3 className="text-sm font-semibold text-slate-300">No scripts match the current filter</h3>
@@ -613,7 +622,8 @@ export default function ScriptApprovalHub({
             })}
           </div>
         )}
-      </div>
+        </motion.div>
+      </AnimatePresence>
 
       {/* APPROVAL CONFIRMATION MODAL */}
       {showApproveModal && approveScriptTarget && (

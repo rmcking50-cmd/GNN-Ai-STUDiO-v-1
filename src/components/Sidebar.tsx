@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { motion } from 'framer-motion';
 import { 
   Tv, 
   LayoutDashboard, 
@@ -17,7 +18,9 @@ import {
   Server,
   Terminal,
   ShieldCheck,
-  Facebook
+  Facebook,
+  Mail,
+  Smartphone
 } from 'lucide-react';
 import { UserRolePayload, OSUserRole } from '../types';
 
@@ -92,6 +95,13 @@ export default function Sidebar({ activeTab, setActiveTab, userRole, setUserRole
       allowedRoles: ['ADMIN', 'OWNER'] 
     },
     { id: 'news', label: 'Grounded News & Scripts', icon: FileText },
+    { 
+      id: 'gmail', 
+      label: 'Gmail News Desk', 
+      icon: Mail, 
+      isNew: true, 
+      badge: 'GMAIL' 
+    },
     { id: 'approvals', label: 'Script Approval Flow', icon: ShieldCheck, badge: 'FLOW' },
     { id: 'studio', label: 'AI Studio Director', icon: Sparkles },
     { 
@@ -100,6 +110,13 @@ export default function Sidebar({ activeTab, setActiveTab, userRole, setUserRole
       icon: Tv, 
       isNew: true,
       badge: 'AUTO'
+    },
+    { 
+      id: 'mobile_companion', 
+      label: 'Expo Mobile Companion', 
+      icon: Smartphone, 
+      isNew: true,
+      badge: 'EXPO'
     },
     { id: 'audio', label: 'Vocal Lab', icon: Mic },
     { id: 'manual_edit', label: 'GNN Manual Edit Panel', icon: Sliders },
@@ -176,21 +193,30 @@ export default function Sidebar({ activeTab, setActiveTab, userRole, setUserRole
             const Icon = item.icon;
             const isActive = activeTab === item.id;
             return (
-              <button
+              <motion.button
                 key={item.id}
                 id={`sidebar-nav-${item.id}`}
                 onClick={() => setActiveTab(item.id)}
-                className={`w-full flex items-center justify-between px-4 py-3 rounded-lg text-sm font-sans font-medium transition-all cursor-pointer ${
+                whileHover={{ x: 3 }}
+                whileTap={{ scale: 0.98 }}
+                className={`relative w-full flex items-center justify-between px-4 py-3 rounded-lg text-sm font-sans font-medium transition-colors cursor-pointer overflow-hidden ${
                   isActive 
-                    ? 'bg-red-600 text-white shadow-lg shadow-red-650/15' 
-                    : 'text-slate-400 hover:text-slate-100 hover:bg-slate-900'
+                    ? 'text-white' 
+                    : 'text-slate-400 hover:text-slate-100 hover:bg-slate-900/60'
                 }`}
               >
-                <div className="flex items-center space-x-3">
-                  <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-slate-400'}`} />
-                  <span>{item.label}</span>
+                {isActive && (
+                  <motion.div
+                    layoutId="activeSidebarIndicator"
+                    className="absolute inset-0 bg-red-600 rounded-lg shadow-lg shadow-red-650/20"
+                    transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                  />
+                )}
+                <div className="relative z-10 flex items-center space-x-3">
+                  <Icon className={`w-4 h-4 transition-colors ${isActive ? 'text-white' : 'text-slate-400'}`} />
+                  <span className="font-semibold">{item.label}</span>
                 </div>
-                <div className="flex items-center gap-1">
+                <div className="relative z-10 flex items-center gap-1">
                   {item.badge && (
                     <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold uppercase ${
                       item.badge === 'ADMIN'
@@ -206,7 +232,7 @@ export default function Sidebar({ activeTab, setActiveTab, userRole, setUserRole
                     </span>
                   )}
                 </div>
-              </button>
+              </motion.button>
             );
           })}
         </nav>

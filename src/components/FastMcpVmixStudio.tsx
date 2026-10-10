@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Tv, 
   Radio, 
@@ -448,8 +449,18 @@ export default function FastMcpVmixStudio({
         </div>
       </div>
 
-      {/* VIEW 1: LIVE SWITCHING MATRIX & MULTI-VIEW TALLY MONITORS */}
-      {activeConsoleTab === 'switcher' && (
+      {/* Console Views with Framer Motion transitions */}
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={activeConsoleTab}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -6 }}
+          transition={{ duration: 0.18, ease: "easeOut" }}
+          className="w-full"
+        >
+          {/* VIEW 1: LIVE SWITCHING MATRIX & MULTI-VIEW TALLY MONITORS */}
+          {activeConsoleTab === 'switcher' && (
         <div className="space-y-6">
           {/* Dual PGM & PVW Broadcast Monitors */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
@@ -1220,6 +1231,8 @@ export default function FastMcpVmixStudio({
           </div>
         </div>
       )}
+        </motion.div>
+      </AnimatePresence>
 
       {/* MODAL 1: FASTMCP ATTACHMENT PICKER */}
       {isAttachModalOpen && (

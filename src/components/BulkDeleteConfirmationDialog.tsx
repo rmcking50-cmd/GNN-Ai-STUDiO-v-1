@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   ShieldAlert, 
   Trash2, 
@@ -49,52 +50,63 @@ export default function BulkDeleteConfirmationDialog({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, isDeleting, onCancel]);
 
-  if (!isOpen) return null;
-
   const totalCount = selectedAssets.length;
 
   return (
-    <div 
-      role="dialog" 
-      aria-modal="true" 
-      aria-labelledby="bulk-delete-dialog-title"
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md animate-fadeIn"
-    >
-      <div 
-        className="w-full max-w-lg bg-slate-900 border border-red-500/30 rounded-2xl shadow-2xl shadow-red-950/30 p-6 space-y-5 animate-scaleIn relative overflow-hidden"
-      >
-        {/* Accent top bar */}
-        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-red-600 via-rose-500 to-amber-500" />
-
-        {/* Header with Warning Icon & Close */}
-        <div className="flex items-start justify-between gap-3 pt-1">
-          <div className="flex items-center gap-3">
-            <div className="p-3 bg-red-500/15 border border-red-500/30 text-red-400 rounded-xl shrink-0 shadow-inner">
-              <ShieldAlert className="w-6 h-6 animate-pulse" />
-            </div>
-            <div>
-              <h3 id="bulk-delete-dialog-title" className="text-base font-bold text-white font-sans flex items-center gap-2">
-                <span>Confirm Permanent Bulk Deletion</span>
-                <span className="px-2 py-0.5 rounded-full text-[11px] font-mono font-bold bg-red-500/20 text-red-300 border border-red-500/30">
-                  {totalCount} {totalCount === 1 ? 'Asset' : 'Assets'}
-                </span>
-              </h3>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Destructive operation requiring explicit editorial authorization.
-              </p>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={isDeleting}
-            className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
-            aria-label="Close dialog"
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div 
+          role="dialog" 
+          aria-modal="true" 
+          aria-labelledby="bulk-delete-dialog-title"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2 }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !isDeleting) onCancel();
+          }}
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md"
+        >
+          <motion.div 
+            initial={{ opacity: 0, scale: 0.94, y: 16 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.94, y: 16 }}
+            transition={{ type: "spring", duration: 0.28, bounce: 0.12 }}
+            className="w-full max-w-lg bg-slate-900 border border-red-500/30 rounded-2xl shadow-2xl shadow-red-950/30 p-6 space-y-5 relative overflow-hidden"
           >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
+            {/* Accent top bar */}
+            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-red-600 via-rose-500 to-amber-500" />
+
+            {/* Header with Warning Icon & Close */}
+            <div className="flex items-start justify-between gap-3 pt-1">
+              <div className="flex items-center gap-3">
+                <div className="p-3 bg-red-500/15 border border-red-500/30 text-red-400 rounded-xl shrink-0 shadow-inner">
+                  <ShieldAlert className="w-6 h-6 animate-pulse" />
+                </div>
+                <div>
+                  <h3 id="bulk-delete-dialog-title" className="text-base font-bold text-white font-sans flex items-center gap-2">
+                    <span>Confirm Permanent Bulk Deletion</span>
+                    <span className="px-2 py-0.5 rounded-full text-[11px] font-mono font-bold bg-red-500/20 text-red-300 border border-red-500/30">
+                      {totalCount} {totalCount === 1 ? 'Asset' : 'Assets'}
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    Destructive operation requiring explicit editorial authorization.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={onCancel}
+                disabled={isDeleting}
+                className="text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+                aria-label="Close dialog"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
 
         {/* Warning Notice Banner */}
         <div className="p-3 bg-red-950/30 border border-red-900/50 rounded-xl flex items-start gap-2.5 text-xs text-red-200/90 leading-relaxed font-sans">
@@ -198,7 +210,9 @@ export default function BulkDeleteConfirmationDialog({
             )}
           </button>
         </div>
-      </div>
-    </div>
-  );
+      </motion.div>
+    </motion.div>
+  )}
+</AnimatePresence>
+);
 }

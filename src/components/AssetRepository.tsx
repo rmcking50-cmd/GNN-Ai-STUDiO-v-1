@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   FolderHeart, 
   Trash2, 
@@ -908,9 +909,12 @@ export default function AssetRepository({ userRole, assets, setAssets, viewMode 
           ) : (
               <div className={viewMode === 'grid' ? "grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[460px] overflow-y-auto pr-1" : "space-y-2 max-h-[460px] overflow-y-auto pr-1"}>
               {filteredAssets.map((asset) => (
-                <div
+                <motion.div
                   key={asset.id}
                   id={`asset-entry-${asset.id}`}
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.15 }}
                   onClick={() => {
                     setSelectedAsset(asset);
                     setAnalysisText('');
@@ -968,7 +972,13 @@ export default function AssetRepository({ userRole, assets, setAssets, viewMode 
                     <div className="space-y-0.5 min-w-0">
                       <div className="flex items-center gap-2">
                         <h4 className="font-semibold text-slate-200 line-clamp-1 group-hover:text-white transition-colors">{asset.name}</h4>
-                        {asset.category && (
+                        {asset.id.startsWith('drive-') && (
+                          <span className="px-1.5 py-0.5 bg-blue-500/15 text-blue-300 border border-blue-500/40 rounded text-[9px] font-mono shrink-0 flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-blue-400" />
+                            Drive
+                          </span>
+                        )}
+                        {asset.category && asset.category !== 'Google Drive' && (
                           <span className="px-1.5 py-0.5 bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 rounded text-[9px] font-mono shrink-0">
                             {asset.category}
                           </span>
@@ -1072,7 +1082,7 @@ export default function AssetRepository({ userRole, assets, setAssets, viewMode 
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
-                </div>
+                </motion.div>
               ))}
             </div>
           )}
@@ -1080,8 +1090,16 @@ export default function AssetRepository({ userRole, assets, setAssets, viewMode 
 
         {/* Right Side: Active Asset Preview & File Replace Operations */}
         <div className="lg:col-span-7 bg-slate-950 border border-slate-900 rounded-xl p-5 flex flex-col justify-between min-h-[460px]">
-          {selectedAsset ? (
-            <div className="space-y-4">
+          <AnimatePresence mode="wait">
+            {selectedAsset ? (
+              <motion.div
+                key={selectedAsset.id}
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={{ duration: 0.18, ease: "easeOut" }}
+                className="space-y-4"
+              >
               
               {/* Asset Header Info */}
               <div className="flex justify-between items-start border-b border-slate-900 pb-3">
@@ -1220,13 +1238,20 @@ export default function AssetRepository({ userRole, assets, setAssets, viewMode 
                 <div>Calculated Size: <strong className="text-slate-400">{selectedAsset.size || '380 KB'}</strong></div>
               </div>
 
-            </div>
+            </motion.div>
           ) : (
-            <div className="text-center p-8 m-auto">
+            <motion.div
+              key="no-selected-asset"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="text-center p-8 m-auto"
+            >
               <FolderHeart className="w-12 h-12 mx-auto text-slate-800 mb-2" />
               <p className="text-xs text-slate-500 font-mono">Select an active media asset to access replacement proxies and previews.</p>
-            </div>
+            </motion.div>
           )}
+          </AnimatePresence>
 
           <div className="mt-4 pt-3 border-t border-slate-900 text-[10px] font-mono text-slate-500 text-center">
             Standard files are stored securely across durable cluster storages. Swapping proxies is isolated instantly.
@@ -1247,74 +1272,92 @@ export default function AssetRepository({ userRole, assets, setAssets, viewMode 
       />
 
       {/* Bulk Tagging Modal */}
-      {showTagModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fadeIn">
-          <div className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-6 space-y-6 animate-scaleIn">
-            <div className="flex items-start gap-4">
-              <div className="p-3 bg-cyan-500/10 text-cyan-400 rounded-xl shrink-0">
-                <Tags className="w-6 h-6 animate-pulse" />
+      <AnimatePresence>
+        {showTagModal && (
+          <motion.div
+            key="bulk-tag-modal-backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            onClick={(e) => {
+              if (e.target === e.currentTarget) setShowTagModal(false);
+            }}
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm"
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.94, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.94, y: 16 }}
+              transition={{ type: "spring", duration: 0.28, bounce: 0.12 }}
+              className="w-full max-w-md bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-6 space-y-6"
+            >
+              <div className="flex items-start gap-4">
+                <div className="p-3 bg-cyan-500/10 text-cyan-400 rounded-xl shrink-0">
+                  <Tags className="w-6 h-6 animate-pulse" />
+                </div>
+                <div className="space-y-1.5 flex-1 min-w-0">
+                  <h3 className="text-base font-bold text-white font-sans">
+                    Bulk Tag Category Label
+                  </h3>
+                  <p className="text-xs text-slate-400 leading-relaxed">
+                    Apply a custom category tag to all <strong className="text-white">{checkedAssetIds.length} selected assets</strong> simultaneously.
+                  </p>
+                </div>
               </div>
-              <div className="space-y-1.5 flex-1 min-w-0">
-                <h3 className="text-base font-bold text-white font-sans">
-                  Bulk Tag Category Label
-                </h3>
-                <p className="text-xs text-slate-400 leading-relaxed">
-                  Apply a custom category tag to all <strong className="text-white">{checkedAssetIds.length} selected assets</strong> simultaneously.
-                </p>
+
+              <div className="space-y-3">
+                <label className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">
+                  Select or Enter Category Label:
+                </label>
+                <input
+                  type="text"
+                  value={bulkCategory}
+                  onChange={(e) => setBulkCategory(e.target.value)}
+                  placeholder="e.g. Breaking News, B-Roll, Prime Archive, Studio Promo"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white font-sans focus:outline-none focus:border-cyan-500"
+                />
+
+                <div className="flex flex-wrap gap-1.5 pt-1">
+                  {['Breaking News', 'B-Roll Archive', 'Prime Exclusive', 'Studio Promo', 'Investigative', 'Live Broadcast'].map(preset => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => setBulkCategory(preset)}
+                      className={`px-2.5 py-1 rounded-lg text-[10px] font-mono transition-all cursor-pointer ${
+                        bulkCategory === preset 
+                          ? 'bg-cyan-600 text-white font-bold' 
+                          : 'bg-slate-950 border border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
+                      }`}
+                    >
+                      {preset}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
 
-            <div className="space-y-3">
-              <label className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">
-                Select or Enter Category Label:
-              </label>
-              <input
-                type="text"
-                value={bulkCategory}
-                onChange={(e) => setBulkCategory(e.target.value)}
-                placeholder="e.g. Breaking News, B-Roll, Prime Archive, Studio Promo"
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-xs text-white font-sans focus:outline-none focus:border-cyan-500"
-              />
-
-              <div className="flex flex-wrap gap-1.5 pt-1">
-                {['Breaking News', 'B-Roll Archive', 'Prime Exclusive', 'Studio Promo', 'Investigative', 'Live Broadcast'].map(preset => (
-                  <button
-                    key={preset}
-                    type="button"
-                    onClick={() => setBulkCategory(preset)}
-                    className={`px-2.5 py-1 rounded-lg text-[10px] font-mono transition-all cursor-pointer ${
-                      bulkCategory === preset 
-                        ? 'bg-cyan-600 text-white font-bold' 
-                        : 'bg-slate-950 border border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
-                    }`}
-                  >
-                    {preset}
-                  </button>
-                ))}
+              {/* Actions */}
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowTagModal(false)}
+                  className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg text-xs font-semibold cursor-pointer transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleBulkTag}
+                  className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg text-xs font-bold flex items-center gap-2 cursor-pointer transition-colors shadow-lg"
+                >
+                  <Tags className="w-4 h-4" />
+                  <span>Apply Tag ({checkedAssetIds.length})</span>
+                </button>
               </div>
-            </div>
-
-            {/* Actions */}
-            <div className="flex items-center justify-end gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => setShowTagModal(false)}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg text-xs font-semibold cursor-pointer transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={handleBulkTag}
-                className="px-4 py-2 bg-cyan-600 hover:bg-cyan-700 text-white rounded-lg text-xs font-bold flex items-center gap-2 cursor-pointer transition-colors shadow-lg"
-              >
-                <Tags className="w-4 h-4" />
-                <span>Apply Tag ({checkedAssetIds.length})</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Full-Size Preview & Media Player Modal View */}
       <AssetPreviewModal

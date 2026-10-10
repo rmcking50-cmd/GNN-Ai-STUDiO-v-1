@@ -25,6 +25,8 @@ import {
   DEFAULT_CLOUDSQL_CONFIG
 } from "./src/db/cloudsql";
 import { fastMcpVmix } from "./src/server/fastMcpVmixService";
+import { requireAuth as requireFirebaseAuth, AuthRequest as FirebaseAuthRequest } from "./src/middleware/auth.ts";
+import { getUsers, getOrCreateUser } from "./src/db/users.ts";
 
 dotenv.config();
 
@@ -113,6 +115,32 @@ app.all("/api/auth/verify", (req: any, res) => {
     role: result.payload.role,
     expiresAt: result.payload.exp ? new Date(result.payload.exp * 1000).toISOString() : null
   });
+});
+
+// ============================================================================
+// FIREBASE AUTHENTICATED USER ENDPOINTS (CLOUD SQL RELATIONAL STORE)
+// ============================================================================
+app.get("/api/users", requireFirebaseAuth, async (req: FirebaseAuthRequest, res) => {
+  try {
+    const usersList = await getUsers();
+    res.json(usersList);
+  } catch (error: any) {
+    console.error("Failed to fetch users:", error);
+    res.status(500).json({ error: error.message || "Failed to fetch users" });
+  }
+});
+
+app.post("/api/users/sync", requireFirebaseAuth, async (req: FirebaseAuthRequest, res) => {
+  try {
+    if (!req.user || !req.user.uid) {
+      return res.status(401).json({ error: "Unauthorized: Missing user token" });
+    }
+    const user = await getOrCreateUser(req.user.uid, req.user.email || "");
+    res.json(user);
+  } catch (error: any) {
+    console.error("Failed to sync user:", error);
+    res.status(500).json({ error: error.message || "Failed to sync user" });
+  }
 });
 
 // GITHUB OAUTH & AUTHENTICATION ENDPOINTS

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Calendar, 
   Clock, 
@@ -139,7 +140,16 @@ export default function SocialScheduler({
         </button>
       </div>
 
-      {activeView === 'facebook' ? (
+      <AnimatePresence mode="wait">
+        <motion.div
+          key={activeView}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -6 }}
+          transition={{ duration: 0.2, ease: "easeOut" }}
+          className="w-full"
+        >
+          {activeView === 'facebook' ? (
         <FacebookAutomationHub
           scripts={scripts}
           assets={assets}
@@ -321,6 +331,8 @@ export default function SocialScheduler({
 
         </div>
       )}
+        </motion.div>
+      </AnimatePresence>
 
     </div>
   );

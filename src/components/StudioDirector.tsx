@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Sparkles, 
   Video, 
@@ -214,8 +215,16 @@ export default function StudioDirector({ userRole, onAddAsset }: StudioDirectorP
         
         {/* Left Form controls */}
         <div className="lg:col-span-5 bg-slate-950 border border-slate-900 rounded-xl p-5 space-y-4">
-          
-          {activeSubTab === 'video' ? (
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={activeSubTab}
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              transition={{ duration: 0.18, ease: "easeOut" }}
+              className="w-full"
+            >
+              {activeSubTab === 'video' ? (
             // VEO VIDEO FORM
             <div className="space-y-4">
               <div className="space-y-1">
@@ -397,6 +406,8 @@ export default function StudioDirector({ userRole, onAddAsset }: StudioDirectorP
               </button>
             </div>
           )}
+            </motion.div>
+          </AnimatePresence>
 
         </div>
 
@@ -408,7 +419,16 @@ export default function StudioDirector({ userRole, onAddAsset }: StudioDirectorP
           </div>
 
           <div className="flex-1 bg-slate-900/60 rounded-xl border border-slate-850 flex items-center justify-center p-4 relative overflow-hidden">
-            {activeSubTab === 'video' ? (
+            <AnimatePresence mode="wait">
+              <motion.div
+                key={`canvas-${activeSubTab}`}
+                initial={{ opacity: 0, scale: 0.98 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.98 }}
+                transition={{ duration: 0.18, ease: "easeOut" }}
+                className="w-full h-full flex items-center justify-center"
+              >
+                {activeSubTab === 'video' ? (
               // VIDEO CANVAS OUTPUT
               generatingVideo ? (
                 <div className="text-center space-y-3 z-10 max-w-sm">
@@ -469,6 +489,8 @@ export default function StudioDirector({ userRole, onAddAsset }: StudioDirectorP
                 </div>
               )
             )}
+              </motion.div>
+            </AnimatePresence>
           </div>
 
           <div className="mt-4 pt-3 border-t border-slate-900 flex justify-between items-center text-[10px] font-mono text-slate-500">
